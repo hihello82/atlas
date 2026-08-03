@@ -19,11 +19,12 @@ export default function Login(){
   useEffect(() => {
     GoogleSignin.configure({
       webClientId: '590334508658-m0hjp221cde13m1c51ae2slacvp58tp8.apps.googleusercontent.com', // Required for obtaining idToken (from Google Cloud / Firebase Console)
-      iosClientId: 'com.googleusercontent.apps.649962851864-dh91lv34fh4dh679cu9dsh6uqb7a4m4t', // Optional: Needed if using iOS without GoogleService-Info.plist
+      iosClientId: '590334508658-6bhi602t4h1qho8q241oq2a3qtmhqjiq.apps.googleusercontent.com', // Optional: Needed if using iOS without GoogleService-Info.plist
       offlineAccess: true,
     });
   }, []);
 
+  // will NOT work until i pay the greedy jews at apple so we'll have to wait and see
   const handleAppleLogin = async () => {
     try{
       const isAvailable = await AppleAuthentication.isAvailableAsync();
