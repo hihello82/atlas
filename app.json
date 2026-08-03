@@ -8,7 +8,9 @@
     "scheme": "atlas",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.hihello82.atlas",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +19,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.hihello82.atlas"
     },
     "web": {
       "output": "static",
@@ -32,11 +35,23 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin/app.plugin.js", 
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.649962851864-dh91lv34fh4dh679cu9dsh6uqb7a4m4t"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f2427483-f208-437f-a743-c020bcddb689"
+      }
     }
   }
 }
