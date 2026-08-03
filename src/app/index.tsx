@@ -36,7 +36,7 @@ export default function Index() {
           setAuthState({ isLoading: false, destination: '/LoginScreen' });
         } else {
           // Authenticated and valid session
-          setAuthState({ isLoading: false, destination: '/Navigator' });
+          setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
         }
       } catch (error) {
         // Fallback to login on error

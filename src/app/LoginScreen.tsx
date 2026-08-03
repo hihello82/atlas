@@ -5,13 +5,13 @@ import { useEffect } from 'react';
 import {
   Alert,
   Image,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function Login(){
   const router = useRouter();
@@ -51,7 +51,7 @@ export default function Login(){
         email,
       });
       
-      router.replace('/Navigator');
+      router.replace('/(tabs)/HomeScreen');
 
     } catch (error: any) {
       // Handle user cancellation gracefully vs. actual error
@@ -84,7 +84,7 @@ export default function Login(){
 
         // TODO: Pass response.data.idToken to your backend API here if applicable
 
-        router.replace('/Navigator');
+        router.replace('/(tabs)/HomeScreen');
       } else if (response.type === 'cancelled') {
         console.log('User canceled Google Sign-In');
       }

@@ -3,13 +3,13 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 // Mock session data
@@ -71,13 +71,13 @@ export default function HomeScreen() {
           <View style={styles.headerIcons}>
             <TouchableOpacity 
               style={styles.iconButton}
-              //onPress={() => router.replace('/Notifications')}
+              //onPress={() => router.push('/Notifications')}
             >
               <Ionicons name="notifications-outline" size={24} color="black" />
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.iconButton}
-              //onPress={() => router.replace('/History')}
+              //onPress={() => router.push('/History')}
             >
               <Ionicons name="time-outline" size={24} color="black" />
             </TouchableOpacity>
