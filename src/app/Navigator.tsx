@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useState } from 'react';
-import { Button, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type TabName = 'Home' | 'Explore' | 'Map' | 'Friends' | 'Profile';
 
@@ -19,16 +19,11 @@ const TABS: TabItem[] = [
   { name: 'Profile', activeIcon: 'person', inactiveIcon: 'person-outline' },
 ];
 
-export default function HomeSceen() {
+export default function Navigator() {
   const [activeTab, setActiveTab] = useState<TabName>('Home');
 
   return (
     <View style={styles.container}>
-
-      <Button 
-        title="Go to Login" 
-        onPress={() => navigation.navigate('Login')} 
-      />
 
       <BlurView tint="light" intensity={80} style={styles.blurContainer}>
         <View style={styles.tabBar}>

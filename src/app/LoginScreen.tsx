@@ -51,7 +51,7 @@ export default function Login(){
         email,
       });
       
-      router.replace('/HomeScreen');
+      router.replace('/Navigator');
 
     } catch (error: any) {
       // Handle user cancellation gracefully vs. actual error
@@ -84,7 +84,7 @@ export default function Login(){
 
         // TODO: Pass response.data.idToken to your backend API here if applicable
 
-        router.replace('/HomeScreen');
+        router.replace('/Navigator');
       } else if (response.type === 'cancelled') {
         console.log('User canceled Google Sign-In');
       }
