@@ -100,6 +100,7 @@ export default function Login(){
 
   const handleEmailLogin = () => {
     console.log('Email login pressed');
+    router.replace('/(tabs)/HomeScreen');
   };
 
   return (
