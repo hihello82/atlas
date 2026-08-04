@@ -13,7 +13,7 @@ type AuthState = {
 export default function Index() {
   const [authState, setAuthState] = useState<AuthState>({
     isLoading: true,
-    destination: '/LoginScreen',
+    destination: '/Home',
   });
 
   useEffect(() => {
@@ -25,17 +25,17 @@ export default function Index() {
         if (isFirstTime === null) {
           // First time ever opening the app -> Send to Onboarding/Login
           await AsyncStorage.setItem('hasLaunchedBefore', 'true');
-          setAuthState({ isLoading: false, destination: '/LoginScreen' });
+          setAuthState({ isLoading: false, destination: '/Home' });
         } else if (user) {
           // User is authenticated with Firebase -> Send to Home
           setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
         } else {
           // User is signed out -> Send to Login
-          setAuthState({ isLoading: false, destination: '/LoginScreen' });
+          setAuthState({ isLoading: false, destination: '/Home' });
         }
       } catch (error) {
         // Fallback to login on error
-        setAuthState({ isLoading: false, destination: '/LoginScreen' });
+        setAuthState({ isLoading: false, destination: '/Home' });
       }
     });
 

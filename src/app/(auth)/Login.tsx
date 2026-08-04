@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
@@ -14,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../../config/firebaseConfig';
+import { auth } from '../../../config/firebaseConfig';
 
 export default function Login(){
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function Login(){
         email,
       });
       
-      router.replace('/(tabs)/HomeScreen');
+      router.replace('/HomeScreen');
 
     } catch (error: any) {
       // Handle user cancellation gracefully vs. actual error
@@ -68,7 +69,7 @@ export default function Login(){
     }
   };
 
-const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async () => {
   try {
     // 1. Check Google Play Services (Android)
     if (Platform.OS === 'android') {
@@ -98,8 +99,8 @@ const handleGoogleLogin = async () => {
       email: firebaseUser.email,
     });
 
-    // 5. Navigate to your app's main screen
-    router.replace('/(tabs)/HomeScreen');
+    // 5. Navigate to confirm phone #
+    router.replace('/HomeScreen');
 
   } catch (error: any) {
     if (
@@ -116,16 +117,26 @@ const handleGoogleLogin = async () => {
       Alert.alert('Sign In Failed', error.message || 'Google Sign-In was unsuccessful.');
     }
   }
-};
+  };
 
-  const handleEmailLogin = () => {
-    console.log('Email login pressed');
-    router.replace('/(tabs)/HomeScreen');
+  const handleEmailLogin = async () => {
+    router.push('/EmailLogin');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
+
+      {/* Top Navigation / Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()} 
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
+        </TouchableOpacity>
+      </View>
 
       {/* Top Branding Section */}
       <View style={styles.topSection}>
@@ -171,7 +182,7 @@ const handleGoogleLogin = async () => {
           onPress={handleEmailLogin}
           activeOpacity={0.8}
         >
-          <Text style={styles.outlinedButtonText}>Use email address</Text>
+          <Text style={styles.outlinedButtonText}>Continue with email or phone</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -189,6 +200,24 @@ const styles = StyleSheet.create({
   topSection: {
     alignItems: 'center',
     marginTop: 40,
+  },
+  header: {
+    width: '100%',
+    paddingTop: 8,
+    alignItems: 'flex-start',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   logoContainer: {
     width: 220,
