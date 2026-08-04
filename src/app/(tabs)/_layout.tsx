@@ -3,17 +3,19 @@ import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Extract the exact props type from Expo Router's Tabs component
 type TabBarProps = NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>;
 type CustomTabBarProps = Parameters<TabBarProps>[0];
 
+// Map route names to match Tabs.Screen names
 const ICON_MAP: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-  index: { active: 'home', inactive: 'home-outline' },
-  explore: { active: 'search', inactive: 'search-outline' },
-  map: { active: 'map', inactive: 'map-outline' },
-  friends: { active: 'people', inactive: 'people-outline' },
-  profile: { active: 'person', inactive: 'person-outline' },
+  HomeScreen: { active: 'home', inactive: 'home-outline' },
+  ExploreScreen: { active: 'search', inactive: 'search-outline' },
+  MapScreen: { active: 'map', inactive: 'map-outline' },
+  FriendsScreen: { active: 'people', inactive: 'people-outline' },
+  ProfileScreen: { active: 'person', inactive: 'person-outline' },
 };
 
 function CustomBlurTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
@@ -69,20 +71,25 @@ function CustomBlurTabBar({ state, descriptors, navigation }: CustomTabBarProps)
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <CustomBlurTabBar {...props} />}
-    >
-      <Tabs.Screen name="HomeScreen" options={{ title: 'Home' }} />
-      <Tabs.Screen name="ExploreScreen" options={{ title: 'Explore' }} />
-      <Tabs.Screen name="MapScreen" options={{ title: 'Map' }} />
-      <Tabs.Screen name="FriendsScreen" options={{ title: 'Friends' }} />
-      <Tabs.Screen name="ProfileScreen" options={{ title: 'Profile' }} />
-    </Tabs>
+    <GestureHandlerRootView style={styles.flex}>
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <CustomBlurTabBar {...props} />}
+      >
+        <Tabs.Screen name="HomeScreen" options={{ title: 'Home' }} />
+        <Tabs.Screen name="ExploreScreen" options={{ title: 'Explore' }} />
+        <Tabs.Screen name="MapScreen" options={{ title: 'Map' }} />
+        <Tabs.Screen name="FriendsScreen" options={{ title: 'Friends' }} />
+        <Tabs.Screen name="ProfileScreen" options={{ title: 'Profile' }} />
+      </Tabs>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   container: {
     position: 'absolute',
     bottom: 0,
