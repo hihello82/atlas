@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from './firebaseConfig';
+import { auth } from '../../config/firebaseConfig';
 
 export default function Login(){
   const router = useRouter();
