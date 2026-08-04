@@ -1,0 +1,1 @@
+export const PROXY_URL = 'https://atlas.bennettyu82.workers.dev/worker.js';

@@ -1,36 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { PROXY_URL } from '../../../config/config';
 
 // Import your GeoJSON data (or replace with local object)
 import geoJsonData from '../../../assets/custom.geo.json';
 
-// Sample list of countries for search filtering
-const SAMPLE_COUNTRIES = [
-  { id: 'JPN', name: 'Japan', code: 'JP', flag: '🇯🇵', continent: 'Asia' },
-  { id: 'USA', name: 'United States', code: 'US', flag: '🇺🇸', continent: 'North America' },
-  { id: 'FRA', name: 'France', code: 'FR', flag: '🇫🇷', continent: 'Europe' },
-  { id: 'ITA', name: 'Italy', code: 'IT', flag: '🇮🇹', continent: 'Europe' },
-  { id: 'ESP', name: 'Spain', code: 'ES', flag: '🇪🇸', continent: 'Europe' },
-  { id: 'BRA', name: 'Brazil', code: 'BR', flag: '🇧🇷', continent: 'South America' },
-  { id: 'AUS', name: 'Australia', code: 'AU', flag: '🇦🇺', continent: 'Oceania' },
-  { id: 'CAN', name: 'Canada', code: 'CA', flag: '🇨🇦', continent: 'North America' },
-  { id: 'DEU', name: 'Germany', code: 'DE', flag: '🇩🇪', continent: 'Europe' },
-  { id: 'GBR', name: 'United Kingdom', code: 'GB', flag: '🇬🇧', continent: 'Europe' },
-];
+export interface CountryResult {
+  cca3: string;
+  cca2: string;
+  name: { common: string; official: string };
+  flag: string;
+  region: string;
+  capital?: string[];
+  population?: number;
+  flags?: { png: string; svg: string; alt?: string };
+}
 
 // Mock session data
 const MOCK_SESSION = {
@@ -66,15 +64,71 @@ export default function HomeScreen() {
   // State for map colors & search query
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [allCountries, setAllCountries] = useState<CountryResult[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Filter country list based on user input
-  const filteredCountries = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    return SAMPLE_COUNTRIES.filter((country) =>
-      country.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  // Fetch ALL countries on component mount
+  useEffect(() => {
+    const fetchAllCountries = async () => {
+      try {
+        console.log('Fetching from:', PROXY_URL);
+        const response = await fetch(PROXY_URL);
+
+        if (response.ok) {
+          const resData = await response.json();
+          console.log('Raw Server Response:', resData);
+          // 1. Target the nested 'objects' array
+          const rawList = resData?.data?.objects || resData?.data || [];
+
+          // 2. Map the worker's structure to match your CountryResult interface
+          const parsedCountries: CountryResult[] = rawList.map((item: any) => ({
+            cca3: item.cca3 || item.codes?.alpha_3 || item.code || item.id || item.uuid || '',
+            cca2: item.cca2 || item.codes?.alpha_2 || '',
+            name: {
+              common: item.names?.common || item.name?.common || '',
+              official: item.names?.official || item.name?.official || '',
+            },
+            flag: item.flag?.emoji || '🏳️',
+            region: item.region || '',
+            capital: item.capitals?.map((c: any) => c.name) || [],
+            population: item.population || 0,
+            flags: {
+              png: item.flag?.url_png || '',
+              svg: item.flag?.url_svg || '',
+            },
+          }));
+
+          // 3. Sort alphabetically by common name
+          parsedCountries.sort((a, b) => a.name.common.localeCompare(b.name.common));
+
+          console.log('Successfully loaded countries:', parsedCountries.length);
+          setAllCountries(parsedCountries);
+        } else {
+          console.error(`HTTP error: ${response.status}`);
+        }
+      } catch (err) {
+        console.error('Failed to fetch countries via proxy:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAllCountries();
+  }, []);
+
+  // Filter countries in real-time based on searchQuery
+  const filteredResults = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return allCountries; // Show all countries when input is empty/focused
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return allCountries.filter(
+      (country) =>
+        country.name?.common?.toLowerCase().includes(query) ||
+        country.name?.official?.toLowerCase().includes(query) ||
+        country.cca3?.toLowerCase().includes(query)
     );
-  }, [searchQuery]);
-
+  }, [searchQuery, allCountries]);
   // Convert GeoJSON Features to SVG Paths
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
@@ -108,12 +162,21 @@ export default function HomeScreen() {
     }));
   };
 
-  const handleCountrySelect = (country: typeof SAMPLE_COUNTRIES[0]) => {
+  const handleCountrySelect = (country: CountryResult) => {
     setSearchQuery('');
-    // Navigates to app/country/[id].tsx route with country parameters
+    
+    // Navigate via Expo Router push using the country's cca3 code
     router.push({
-      pathname: `../(countries)/${country.id}`,
-      params: { name: country.name, flag: country.flag, continent: country.continent },
+      pathname: `../(countries)/${country.cca3}`,
+      params: {
+        code: country.cca3,
+        name: country.name.common,
+        flag: country.flag,
+        flagUrl: country.flags?.png || '',
+        region: country.region,
+        capital: country.capital ? country.capital[0] : 'N/A',
+        population: country.population ? country.population.toLocaleString() : 'N/A',
+      },
     });
   };
 
@@ -137,48 +200,52 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* SEARCH BAR */}
-        <View style={styles.searchSectionContainer}>
-          <View style={styles.searchBarContainer}>
-            <Ionicons name="search-outline" size={20} color="#7f8c8d" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search countries, cities, landmarks..."
-              placeholderTextColor="#95a5a6"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={18} color="#95a5a6" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* SEARCH RESULTS DROPDOWN */}
-          {filteredCountries.length > 0 && (
-            <View style={styles.searchResultsContainer}>
-              <FlatList
-                data={filteredCountries}
-                keyExtractor={(item) => item.id}
-                keyboardShouldPersistTaps="handled"
-                scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.searchResultItem}
-                    onPress={() => handleCountrySelect(item)}
-                  >
-                    <Text style={styles.resultFlag}>{item.flag}</Text>
-                    <View style={styles.resultTextContainer}>
-                      <Text style={styles.resultName}>{item.name}</Text>
-                      <Text style={styles.resultSubtitle}>{item.continent}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#bdc3c7" />
+          <View style={styles.searchWrapper}>
+            {/* Your existing Search TextInput/Bar */}
+            {/* SEARCH BAR */}
+            <View style={styles.searchSectionContainer}>
+              <View style={styles.searchBarContainer}>
+                <Ionicons name="search-outline" size={20} color="#7f8c8d" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search countries..."
+                  placeholderTextColor="#95a5a6"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {loading && <ActivityIndicator size="small" color="#007aff" style={styles.spinner} />}
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                    <Ionicons name="close-circle" size={18} color="#95a5a6" />
                   </TouchableOpacity>
                 )}
-              />
-            </View>
-          )}
+              </View>
+            {/* Search Results Dropdown */}
+            {(searchQuery.length > 0 && filteredResults.length > 0) && (
+              <View style={styles.searchResultsContainer}>
+                <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 280 }}>
+                  {filteredResults.map((item) => (
+                    <TouchableOpacity
+                      key={item.cca3}
+                      style={styles.searchResultItem}
+                      onPress={() => handleCountrySelect(item)}
+                    >
+                      <Text style={styles.resultFlag}>{item.flag}</Text>
+                      <View style={styles.resultTextContainer}>
+                        <Text style={styles.resultName}>{item.name.common}</Text>
+                        <Text style={styles.resultSubtitle}>
+                          {item.region} {item.capital?.[0] ? `• ${item.capital[0]}` : ''}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#bdc3c7" />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* INTERACTIVE MAP CONTAINER */}
@@ -252,6 +319,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  searchWrapper: {
+    position: 'relative',
+    zIndex: 1000, // Forces the container and its absolute children above the map/cards
+    elevation: 1000, // Android stacking fix
+    marginBottom: 16,
+    overflow: 'visible', // Ensure absolute children aren't clipped
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#e1e8ee',
+  },
   container: {
     padding: 20,
     paddingBottom: 40,
@@ -292,6 +376,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 10,
     marginBottom: 20,
+    overflow: 'visible', // Ensure absolute children aren't clipped
   },
   searchBarContainer: {
     flexDirection: 'row',
@@ -330,7 +415,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
-    zIndex: 20,
+    zIndex: 2000, // Make sure zIndex is higher than parent containers
   },
   searchResultItem: {
     flexDirection: 'row',
@@ -339,6 +424,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
+  },
+  spinner: { 
+    marginRight: 8 
   },
   resultFlag: {
     fontSize: 20,
