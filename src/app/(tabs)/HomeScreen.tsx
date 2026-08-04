@@ -3,10 +3,12 @@ import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  FlatList,
   Image,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,6 +17,20 @@ import Svg, { Path } from 'react-native-svg';
 
 // Import your GeoJSON data (or replace with local object)
 import geoJsonData from '../../../assets/custom.geo.json';
+
+// Sample list of countries for search filtering
+const SAMPLE_COUNTRIES = [
+  { id: 'JPN', name: 'Japan', code: 'JP', flag: '🇯🇵', continent: 'Asia' },
+  { id: 'USA', name: 'United States', code: 'US', flag: '🇺🇸', continent: 'North America' },
+  { id: 'FRA', name: 'France', code: 'FR', flag: '🇫🇷', continent: 'Europe' },
+  { id: 'ITA', name: 'Italy', code: 'IT', flag: '🇮🇹', continent: 'Europe' },
+  { id: 'ESP', name: 'Spain', code: 'ES', flag: '🇪🇸', continent: 'Europe' },
+  { id: 'BRA', name: 'Brazil', code: 'BR', flag: '🇧🇷', continent: 'South America' },
+  { id: 'AUS', name: 'Australia', code: 'AU', flag: '🇦🇺', continent: 'Oceania' },
+  { id: 'CAN', name: 'Canada', code: 'CA', flag: '🇨🇦', continent: 'North America' },
+  { id: 'DEU', name: 'Germany', code: 'DE', flag: '🇩🇪', continent: 'Europe' },
+  { id: 'GBR', name: 'United Kingdom', code: 'GB', flag: '🇬🇧', continent: 'Europe' },
+];
 
 // Mock session data
 const MOCK_SESSION = {
@@ -47,18 +63,26 @@ const MAP_HEIGHT = 210;
 export default function HomeScreen() {
   const router = useRouter();
 
-  // State for map colors
+  // State for map colors & search query
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter country list based on user input
+  const filteredCountries = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return SAMPLE_COUNTRIES.filter((country) =>
+      country.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+    );
+  }, [searchQuery]);
 
   // Convert GeoJSON Features to SVG Paths
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
 
-    // Create custom projection: center slightly north and zoom in
     const projection = geoNaturalEarth1()
-      .scale(70) // Increases map size to fill container
-      .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 10]) // Adjust vertical center
-      .clipExtent([[0, 0], [MAP_WIDTH, MAP_HEIGHT]]); // Clips boundaries to frame
+      .scale(70)
+      .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 10])
+      .clipExtent([[0, 0], [MAP_WIDTH, MAP_HEIGHT]]);
 
     const pathGenerator = geoPath().projection(projection);
 
@@ -80,14 +104,22 @@ export default function HomeScreen() {
   const toggleCountryColor = (regionId: string) => {
     setCountryColors(prev => ({
       ...prev,
-      // Toggles between blue (#3498db) and default gray (#d3d3d3)
       [regionId]: prev[regionId] === '#3498db' ? '#d3d3d3' : '#3498db',
     }));
   };
 
+  const handleCountrySelect = (country: typeof SAMPLE_COUNTRIES[0]) => {
+    setSearchQuery('');
+    // Navigates to app/country/[id].tsx route with country parameters
+    router.push({
+      pathname: `../(countries)/${country.id}`,
+      params: { name: country.name, flag: country.flag, continent: country.continent },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
         {/* HEADER */}
         <View style={styles.headerContainer}>
@@ -96,19 +128,57 @@ export default function HomeScreen() {
             <Text style={styles.nameText}>{MOCK_SESSION.name}</Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity 
-              style={styles.iconButton}
-              // onPress={() => router.push('/Notifications')}
-            >
+            <TouchableOpacity style={styles.iconButton}>
               <Ionicons name="notifications-outline" size={24} color="black" />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.iconButton}
-              // onPress={() => router.push('/History')}
-            >
+            <TouchableOpacity style={styles.iconButton}>
               <Ionicons name="time-outline" size={24} color="black" />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* SEARCH BAR */}
+        <View style={styles.searchSectionContainer}>
+          <View style={styles.searchBarContainer}>
+            <Ionicons name="search-outline" size={20} color="#7f8c8d" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search countries, cities, landmarks..."
+              placeholderTextColor="#95a5a6"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={18} color="#95a5a6" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* SEARCH RESULTS DROPDOWN */}
+          {filteredCountries.length > 0 && (
+            <View style={styles.searchResultsContainer}>
+              <FlatList
+                data={filteredCountries}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                scrollEnabled={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.searchResultItem}
+                    onPress={() => handleCountrySelect(item)}
+                  >
+                    <Text style={styles.resultFlag}>{item.flag}</Text>
+                    <View style={styles.resultTextContainer}>
+                      <Text style={styles.resultName}>{item.name}</Text>
+                      <Text style={styles.resultSubtitle}>{item.continent}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#bdc3c7" />
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          )}
         </View>
 
         {/* INTERACTIVE MAP CONTAINER */}
@@ -190,7 +260,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
     marginTop: 10,
   },
   welcomeText: {
@@ -217,16 +287,86 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
   },
+  // SEARCH BAR STYLES
+  searchSectionContainer: {
+    position: 'relative',
+    zIndex: 10,
+    marginBottom: 20,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 16,
+    height: 52,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#2c3e50',
+    height: '100%',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchResultsContainer: {
+    position: 'absolute',
+    top: 58,
+    left: 0,
+    right: 0,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    zIndex: 20,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  resultFlag: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  resultTextContainer: {
+    flex: 1,
+  },
+  resultName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  resultSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
   mapCard: {
     backgroundColor: '#f0f3f5',
     borderRadius: 20,
-    padding: 0, // Set padding to 0 so the map can stretch edge-to-edge
-    marginBottom: 10,
+    padding: 0,
+    marginBottom: 20,
     height: 200,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    overflow: 'hidden', // Clips any map overlap neatly at the rounded corners
+    overflow: 'hidden',
   },
   mapWrapper: {
     width: '100%',
