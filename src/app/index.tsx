@@ -1,9 +1,9 @@
-// so it stops giving me that stupid error every time i build this app
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Href, Redirect } from 'expo-router';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { auth } from './firebaseConfig';
 
 type AuthState = {
   isLoading: boolean;
@@ -17,34 +17,30 @@ export default function Index() {
   });
 
   useEffect(() => {
-    async function checkNavigationState() {
+    // 1. Listen for Firebase auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       try {
         const isFirstTime = await AsyncStorage.getItem('hasLaunchedBefore');
-        const userToken = await AsyncStorage.getItem('userToken');
-        const tokenExpiry = await AsyncStorage.getItem('tokenExpiry');
-
-        // Check if token exists and is not expired
-        const now = Date.now();
-        const isSessionValid = userToken && tokenExpiry && now < parseInt(tokenExpiry, 10);
 
         if (isFirstTime === null) {
-          // First time ever opening the app
+          // First time ever opening the app -> Send to Onboarding/Login
           await AsyncStorage.setItem('hasLaunchedBefore', 'true');
           setAuthState({ isLoading: false, destination: '/LoginScreen' });
-        } else if (!isSessionValid) {
-          // Session expired or token missing
-          setAuthState({ isLoading: false, destination: '/LoginScreen' });
-        } else {
-          // Authenticated and valid session
+        } else if (user) {
+          // User is authenticated with Firebase -> Send to Home
           setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
+        } else {
+          // User is signed out -> Send to Login
+          setAuthState({ isLoading: false, destination: '/LoginScreen' });
         }
       } catch (error) {
         // Fallback to login on error
         setAuthState({ isLoading: false, destination: '/LoginScreen' });
       }
-    }
+    });
 
-    checkNavigationState();
+    // 2. Clean up the Firebase listener when unmounting
+    return () => unsubscribe();
   }, []);
 
   if (authState.isLoading) {

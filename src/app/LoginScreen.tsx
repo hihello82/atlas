@@ -1,10 +1,12 @@
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { useEffect } from 'react';
 import {
   Alert,
   Image,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -12,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { auth } from './firebaseConfig';
 
 export default function Login(){
   const router = useRouter();
@@ -65,39 +68,55 @@ export default function Login(){
     }
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      // 2. Check if Google Play Services are available (Android required)
-      await GoogleSignin.hasPlayServices();
-
-      // 3. Trigger sign-in flow
-      const response = await GoogleSignin.signIn();
-
-      if (response.type === 'success') {
-        // Extract user data directly from the response
-        const { email, name } = response.data.user;
-
-        console.log('Google Sign-In Success:', {
-          name,
-          email,
-          idToken: response.data.idToken,
-        });
-
-        // TODO: Pass response.data.idToken to your backend API here if applicable
-
-        router.replace('/(tabs)/HomeScreen');
-      } else if (response.type === 'cancelled') {
-        console.log('User canceled Google Sign-In');
-      }
-    } catch (error: any) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        console.log('User canceled Google Sign-In');
-      } else {
-        console.error('Google Sign-In Error:', error);
-        Alert.alert('Sign In Failed', 'Google Sign-In was unsuccessful. Please try again.');
-      }
+const handleGoogleLogin = async () => {
+  try {
+    // 1. Check Google Play Services (Android)
+    if (Platform.OS === 'android') {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     }
-  };
+
+    // 2. Prompt native Google Sign-In sheet
+    const response = await GoogleSignin.signIn();
+    
+    // In newer library versions data is under response.data, in older under response
+    const idToken = response.data?.idToken || (response as any).idToken;
+
+    if (!idToken) {
+      throw new Error('Failed to retrieve Google ID token.');
+    }
+
+    // 3. Create Firebase Credential
+    const credential = GoogleAuthProvider.credential(idToken);
+
+    // 4. SIGN IN TO FIREBASE (Missing Step!)
+    const userCredential = await signInWithCredential(auth, credential);
+    const firebaseUser = userCredential.user;
+
+    console.log('Firebase Sign-In Success:', {
+      uid: firebaseUser.uid,
+      name: firebaseUser.displayName,
+      email: firebaseUser.email,
+    });
+
+    // 5. Navigate to your app's main screen
+    router.replace('/(tabs)/HomeScreen');
+
+  } catch (error: any) {
+    if (
+      error.code === statusCodes.SIGN_IN_CANCELLED || 
+      error.message?.includes('cancelled')
+    ) {
+      console.log('User canceled Google Sign-In');
+    } else if (error.code === statusCodes.IN_PROGRESS) {
+      console.log('Sign-in is already in progress');
+    } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      Alert.alert('Error', 'Google Play Services are not available or updated on this device.');
+    } else {
+      console.error('Google Sign-In Error:', error);
+      Alert.alert('Sign In Failed', error.message || 'Google Sign-In was unsuccessful.');
+    }
+  }
+};
 
   const handleEmailLogin = () => {
     console.log('Email login pressed');

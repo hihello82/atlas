@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "atlas",
@@ -10,7 +11,8 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.hihello82.atlas",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "googleServicesFile": "./GoogleService-info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -20,13 +22,24 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.hihello82.atlas"
+      "package": "com.hihello82.atlas",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "@react-native-firebase/app/app.plugin.js",
+      "./plugins/withRNFirebaseDisableSPM.js",
       "expo-router",
       [
         "expo-splash-screen",
@@ -43,7 +56,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "@react-native-firebase/auth/app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true,
