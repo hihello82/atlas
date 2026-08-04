@@ -3,7 +3,7 @@ import { Href, Redirect } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { auth } from './firebaseConfig';
+import { auth } from '../../config/firebaseConfig';
 
 type AuthState = {
   isLoading: boolean;
