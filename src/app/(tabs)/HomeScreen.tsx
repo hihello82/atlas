@@ -1,16 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+
+// Import your GeoJSON data (or replace with local object)
+import geoJsonData from '../../../assets/custom.geo.json';
 
 // Mock session data
 const MOCK_SESSION = {
@@ -36,13 +40,9 @@ const MOCK_CLOUD_DATA = {
   ]
 };
 
-// Dummy SVG Paths for demonstration (Representing 3 selectable "countries")
-// To get a full world map, you would import a JSON array of SVG paths for all 195+ countries.
-const MAP_REGIONS = [
-  { id: 'region1', path: 'M10 10 H 90 V 90 H 10 Z' }, // Top Left Square
-  { id: 'region2', path: 'M110 10 H 190 V 90 H 110 Z' }, // Top Right Square
-  { id: 'region3', path: 'M60 110 H 140 V 190 H 60 Z' }, // Bottom Middle Square
-];
+// Target SVG Dimensions
+const MAP_WIDTH = 360;
+const MAP_HEIGHT = 210;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -50,11 +50,38 @@ export default function HomeScreen() {
   // State for map colors
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
 
+  // Convert GeoJSON Features to SVG Paths
+  const formattedRegions = useMemo(() => {
+    if (!geoJsonData || !geoJsonData.features) return [];
+
+    // Create custom projection: center slightly north and zoom in
+    const projection = geoNaturalEarth1()
+      .scale(70) // Increases map size to fill container
+      .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 10]) // Adjust vertical center
+      .clipExtent([[0, 0], [MAP_WIDTH, MAP_HEIGHT]]); // Clips boundaries to frame
+
+    const pathGenerator = geoPath().projection(projection);
+
+    return geoJsonData.features.map((feature: any, index: number) => {
+      const rawId =
+        feature.properties?.iso_a3 ||
+        feature.properties?.ISO_A3 ||
+        feature.properties?.name;
+
+      const id = rawId && rawId !== '-99' ? String(rawId) : `region-${index}`;
+
+      return {
+        id,
+        path: pathGenerator(feature) || '',
+      };
+    });
+  }, []);
+
   const toggleCountryColor = (regionId: string) => {
     setCountryColors(prev => ({
       ...prev,
-      // Toggles between a colored state (blue) and default (undefined/gray)
-      [regionId]: prev[regionId] === '#3498db' ? '#d3d3d3' : '#3498db'
+      // Toggles between blue (#3498db) and default gray (#d3d3d3)
+      [regionId]: prev[regionId] === '#3498db' ? '#d3d3d3' : '#3498db',
     }));
   };
 
@@ -71,13 +98,13 @@ export default function HomeScreen() {
           <View style={styles.headerIcons}>
             <TouchableOpacity 
               style={styles.iconButton}
-              //onPress={() => router.push('/Notifications')}
+              // onPress={() => router.push('/Notifications')}
             >
               <Ionicons name="notifications-outline" size={24} color="black" />
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.iconButton}
-              //onPress={() => router.push('/History')}
+              // onPress={() => router.push('/History')}
             >
               <Ionicons name="time-outline" size={24} color="black" />
             </TouchableOpacity>
@@ -86,19 +113,22 @@ export default function HomeScreen() {
 
         {/* INTERACTIVE MAP CONTAINER */}
         <View style={styles.mapCard}>
-          {/* Functional 2D Map Placeholder */}
           <View style={styles.mapWrapper}>
-             <Svg height="200" width="100%" viewBox="0 0 200 200">
-              {MAP_REGIONS.map((region) => (
-                <Path
-                  key={region.id}
-                  d={region.path}
-                  fill={countryColors[region.id] || '#d3d3d3'} // Gray by default
-                  stroke="#ffffff"
-                  strokeWidth="2"
-                  onPress={() => toggleCountryColor(region.id)}
-                />
-              ))}
+            <Svg height="100%" width="100%" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}>
+              {formattedRegions.map((region) => {
+                if (!region.path) return null;
+
+                return (
+                  <Path
+                    key={region.id}
+                    d={region.path}
+                    fill={countryColors[region.id] || '#d3d3d3'}
+                    stroke="#ffffff"
+                    strokeWidth="0.5"
+                    onPress={() => toggleCountryColor(region.id)}
+                  />
+                );
+              })}
             </Svg>
           </View>
 
@@ -111,19 +141,16 @@ export default function HomeScreen() {
 
         {/* STATS SECTION */}
         <View style={styles.statsContainer}>
-          {/* Interactable Button 1 */}
           <TouchableOpacity style={[styles.statBox, styles.statBoxBlue]}>
             <Text style={[styles.statNumber, styles.textBlue]}>{MOCK_CLOUD_DATA.stats.countries}</Text>
             <Text style={styles.statLabel}>Countries</Text>
           </TouchableOpacity>
 
-          {/* Interactable Button 2 */}
           <TouchableOpacity style={[styles.statBox, styles.statBoxGreen]}>
             <Text style={[styles.statNumber, styles.textGreen]}>{MOCK_CLOUD_DATA.stats.cities}</Text>
             <Text style={styles.statLabel}>Cities</Text>
           </TouchableOpacity>
 
-          {/* Uninteractable Field */}
           <View style={[styles.statBox, styles.statBoxWhite]}>
             <Text style={styles.statNumber}>{MOCK_CLOUD_DATA.stats.continents}</Text>
             <Text style={styles.statLabel}>Continents</Text>
@@ -137,7 +164,6 @@ export default function HomeScreen() {
             <Image source={{ uri: activity.image }} style={styles.activityImage} />
             <View style={styles.activityInfo}>
               <View style={styles.activityLocation}>
-                {/* Flag placeholder using an emoji */}
                 <Text style={styles.cityText}>🇯🇵 {activity.city}</Text>
                 <Text style={styles.countryText}>{activity.country}</Text>
               </View>
@@ -194,17 +220,17 @@ const styles = StyleSheet.create({
   mapCard: {
     backgroundColor: '#f0f3f5',
     borderRadius: 20,
-    padding: 15,
-    marginBottom: 25,
-    minHeight: 220,
+    padding: 0, // Set padding to 0 so the map can stretch edge-to-edge
+    marginBottom: 10,
+    height: 200,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'hidden', // Clips any map overlap neatly at the rounded corners
   },
   mapWrapper: {
     width: '100%',
-    height: 200,
+    height: '100%',
   },
   exploredBadge: {
     position: 'absolute',
