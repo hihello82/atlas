@@ -48,7 +48,7 @@ export default function Home(){
         {/* Sign Up Button */}
         <TouchableOpacity
           style={[styles.button, styles.outlinedButton]}
-          onPress={() => router.push('/SignUp')}
+          onPress={() => router.push('/Phone')}
           activeOpacity={0.8}
         >
           <Text style={styles.outlinedButtonText}>Sign Up</Text>
