@@ -51,7 +51,7 @@ export default function Phone() {
       >
         {/* Header Text Section */}
         <View style={styles.textSection}>
-          <Text style={styles.title}>GET STARTED</Text>
+          <Text style={styles.title}>Get Started</Text>
           <Text style={styles.subtitle}>Enter your phone number</Text>
         </View>
 
@@ -144,12 +144,12 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   title: {
-    fontSize: 32,
-    fontFamily: 'Playfair Display', // Matches ATLAS top header font family
-    letterSpacing: 2,
+    fontSize: 28, // Scaled slightly down to fit the longer string gracefully
+    fontFamily: 'Playfair Display',
+    letterSpacing: 1,
     color: '#0D1B2A',
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
