@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PROXY_URL } from '../../../config/config';
+import { db } from '../../../config/firebaseConfig';
 
 export default function CountryDetailScreen() {
   const router = useRouter();
@@ -57,16 +58,29 @@ export default function CountryDetailScreen() {
   useEffect(() => {
     if (!params.code) return;
 
-    fetch(`${PROXY_URL}?q=${encodeURIComponent(params.code)}`)
-      .then((res) => res.json())
-      .then((resData) => {
-        const objects = resData?.data?.objects || [];
-        const match =
-          objects.find((c: any) => c.codes?.alpha_3 === params.code) || objects[0];
-        setDetails(match || null);
-      })
-      .catch((err) => console.error('Failed to fetch country details via proxy:', err))
-      .finally(() => setLoading(false));
+    const fetchCountryDetail = async () => {
+      try {
+        const docRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const countriesList = docSnap.data().countries || docSnap.data().data || [];
+          
+          // Match country by cca3
+          const match = countriesList.find(
+            (c: any) => (c.cca3 || c.codes?.alpha_3) === params.code
+          );
+          
+          setDetails(match || null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch country detail from Firestore:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCountryDetail();
   }, [params.code]);
 
   return (

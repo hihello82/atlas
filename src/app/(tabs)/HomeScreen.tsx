@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { PROXY_URL } from '../../../config/config';
+import { db } from '../../../config/firebaseConfig'; // Update path to your firebase config
 
 // Import your GeoJSON data (or replace with local object)
 import geoJsonData from '../../../assets/custom.geo.json';
@@ -71,43 +72,40 @@ export default function HomeScreen() {
   useEffect(() => {
     const fetchAllCountries = async () => {
       try {
-        console.log('Fetching from:', PROXY_URL);
-        const response = await fetch(PROXY_URL);
+        // Reference to document: collection "app_data", document "countries"
+        const docRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(docRef);
 
-        if (response.ok) {
-          const resData = await response.json();
-          console.log('Raw Server Response:', resData);
-          // 1. Target the nested 'objects' array
-          const rawList = resData?.data?.objects || resData?.data || [];
+        if (docSnap.exists()) {
+          const rawList = docSnap.data().countries || docSnap.data().data || [];
 
-          // 2. Map the worker's structure to match your CountryResult interface
+          // Map the array elements to match CountryResult
           const parsedCountries: CountryResult[] = rawList.map((item: any) => ({
-            cca3: item.cca3 || item.codes?.alpha_3 || item.code || item.id || item.uuid || '',
+            cca3: item.cca3 || item.codes?.alpha_3 || item.code || item.id || '',
             cca2: item.cca2 || item.codes?.alpha_2 || '',
             name: {
-              common: item.names?.common || item.name?.common || '',
-              official: item.names?.official || item.name?.official || '',
+              common: item.name?.common || item.names?.common || '',
+              official: item.name?.official || item.names?.official || '',
             },
-            flag: item.flag?.emoji || '🏳️',
+            flag: typeof item.flag === 'string' ? item.flag : (item.flag?.emoji || '🏳️'),
             region: item.region || '',
-            capital: item.capitals?.map((c: any) => c.name) || [],
+            capital: Array.isArray(item.capital) ? item.capital : [],
             population: item.population || 0,
             flags: {
-              png: item.flag?.url_png || '',
-              svg: item.flag?.url_svg || '',
+              png: item.flags?.png || item.flag?.url_png || '',
+              svg: item.flags?.svg || item.flag?.url_svg || '',
             },
           }));
 
-          // 3. Sort alphabetically by common name
+          // Sort alphabetically by common name
           parsedCountries.sort((a, b) => a.name.common.localeCompare(b.name.common));
 
-          console.log('Successfully loaded countries:', parsedCountries.length);
           setAllCountries(parsedCountries);
         } else {
-          console.error(`HTTP error: ${response.status}`);
+          console.error('No document found at app_data/countries');
         }
       } catch (err) {
-        console.error('Failed to fetch countries via proxy:', err);
+        console.error('Failed to fetch countries from Firestore:', err);
       } finally {
         setLoading(false);
       }
