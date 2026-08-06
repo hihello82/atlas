@@ -51,7 +51,7 @@ export default function Index() {
       } catch (error) {
         // Fallback to login on error
         setAuthState({ isLoading: false, destination: '/Home' });
-        console.log('error, going to home');
+        console.log('error, going to home' + error);
       }
     });
 

@@ -3,7 +3,7 @@ import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-si
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -18,7 +18,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../../../config/firebaseConfig';
+import { auth } from '../../../config/firebaseConfig';
 
 export default function SignUp() {
 
@@ -27,7 +27,6 @@ export default function SignUp() {
     countryCode?: string;
     }>();
 
-    console.log(countryCode + ' ' + phoneNumber)
   const router = useRouter();
 
   // Form Field States
@@ -36,6 +35,7 @@ export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [username, setUsername] = useState('');
 
   // Debounced Validation States
   const [isEmailValid, setIsEmailValid] = useState(true);
@@ -106,6 +106,7 @@ export default function SignUp() {
   // Uses the instant checks (not the debounced display states) so the button can
   // never enable based on a stale "valid" value while a debounce timer is still pending.
   const isFormValid =
+    username.trim().length > 0 &&
     firstName.trim().length > 0 &&
     lastName.trim().length > 0 &&
     email.trim().length > 0 &&
@@ -113,32 +114,33 @@ export default function SignUp() {
     passwordMeetsRequirements &&
     doPasswordsMatch;
 
-  const handleSignUp = async () => {
+    const handleSignUp = async () => {
     if (!isFormValid) return;
 
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Combine country code and phone number if present
-        const fullPhoneNumber = phoneNumber ? `${countryCode || ''}${phoneNumber}` : null;
+        const functions = getFunctions();
+        const createUserProfile = httpsCallable(functions, 'createUserProfile');
 
-        await setDoc(doc(db, 'users', user.uid), {
+        // Call Cloud Function to perform writes
+        await createUserProfile({
         uid: user.uid,
+        username: username.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: user.email,
-        phoneNumber: fullPhoneNumber,
+        phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
         countryCode: countryCode || null,
         rawPhoneNumber: phoneNumber || null,
-        createdAt: new Date().toISOString(),
         });
 
         router.replace('/HomeScreen');
     } catch (error: any) {
         Alert.alert('Sign-Up Error', error.message);
     }
-};
+    };
 
   const handleAppleLogin = async () => {
     try {
@@ -178,22 +180,22 @@ export default function SignUp() {
         const userCredential = await signInWithCredential(auth, credential);
         const user = userCredential.user;
 
-        // Save/update Google user profile in Firestore
-        await setDoc(
-            doc(db, 'users', user.uid),
-            {
-                uid: user.uid,
-                firstName: user.displayName?.split(' ')[0] || '',
-                lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-                email: user.email,
-                photoURL: user.photoURL || '',
-                phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
-                countryCode: countryCode || null,
-                rawPhoneNumber: phoneNumber || null,
-                lastLoginAt: new Date().toISOString(),
-            },
-            { merge: true }
-        );
+        const functions = getFunctions();
+        const createUserProfile = httpsCallable(functions, 'createUserProfile');
+
+        // Call Cloud Function to handle Firestore writes
+        await createUserProfile({
+        uid: user.uid,
+        username: username.trim() || user.email?.split('@')[0], // Fallback if no username typed prior to Google login
+        firstName: user.displayName?.split(' ')[0] || '',
+        lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+        email: user.email,
+        photoURL: user.photoURL || '',
+        phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
+        countryCode: countryCode || null,
+        rawPhoneNumber: phoneNumber || null,
+        isGoogleSignIn: true,
+        });
 
         router.replace('/HomeScreen');
     } catch (error: any) {
@@ -264,6 +266,18 @@ export default function SignUp() {
                 value={lastName}
                 onChangeText={setLastName}
               />
+            </View>
+
+            {/* Username Input */}
+            <View style={styles.inputContainer}>
+            <TextInput
+                style={styles.input}
+                placeholder="Username"
+                placeholderTextColor="#8E9AA0"
+                autoCapitalize="none"
+                value={username}
+                onChangeText={setUsername}
+            />
             </View>
 
             {/* Email Input */}

@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Lock down user profiles by default
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Allow checking if a phone number exists
+    match /phone_numbers/{phoneNumber} {
+      allow get: if true;        // Permits fetching a specific phone number doc
+      allow list: if false;       // Prevents scraping all phone numbers
+      allow write: if false;
+    }
+
+    // Allow checking if an email exists
+    match /emails/{email} {
+      allow get: if true;        // Permits fetching a specific email doc
+      allow list: if false;       // Prevents scraping all emails
+      allow write: if false;
+    }
+
+    // Allow checking credentials / user existence
+    match /usernames/{username} {
+      allow get: if true;        // Permits fetching a specific username doc
+      allow list: if false;       // Prevents scraping all usernames
+      allow write: if false;
+    }
+  }
+}

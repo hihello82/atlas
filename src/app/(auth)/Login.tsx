@@ -288,6 +288,17 @@ const handleLogin = async () => {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        <TouchableOpacity
+          style={styles.signUpLinkContainer}
+          onPress={() => router.replace('/Login')} // Adjust path to your login screen
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signUpText}>
+            Not on Atlas yet? <Text style={styles.signUpTextBold}>Sign up</Text>
+          </Text>
+        </TouchableOpacity>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -415,5 +426,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
+  },
+  signUpLinkContainer: {
+    marginTop: 16,
+    paddingVertical: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signUpText: {
+    fontSize: 14,
+    color: '#5C6B73',
+  },
+  signUpTextBold: {
+    fontWeight: '700',
+    color: '#0D1B2A',
   },
 });

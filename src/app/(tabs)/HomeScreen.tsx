@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { db } from '../../../config/firebaseConfig'; // Update path to your firebase config
+import { auth, db } from '../../../config/firebaseConfig';
 
 // Import your GeoJSON data (or replace with local object)
 import geoJsonData from '../../../assets/custom.geo.json';
@@ -33,7 +34,6 @@ export interface CountryResult {
 
 // Mock session data
 const MOCK_SESSION = {
-  name: "Alex Chen",
   exploredPercentage: 12,
 };
 
@@ -62,6 +62,33 @@ const MAP_HEIGHT = 210;
 export default function HomeScreen() {
   const router = useRouter();
 
+  const [userName, setUserName] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          // Fetch user metadata stored under users/{userId}
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+
+          if (userDocSnap.exists()) {
+            const data = userDocSnap.data();
+            // Use firstName/lastName if available, or fall back to displayName
+            const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+            setUserName(fullName || user.displayName || 'Traveler');
+          } else {
+            setUserName(user.displayName || 'Traveler');
+          }
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // State for map colors & search query
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,34 +99,37 @@ export default function HomeScreen() {
   useEffect(() => {
     const fetchAllCountries = async () => {
       try {
-        // Reference to document: collection "app_data", document "countries"
         const docRef = doc(db, 'app_data', 'countries');
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          const rawList = docSnap.data().countries || docSnap.data().data || [];
+          const rawList = docSnap.data().countries || [];
 
-          // Map the array elements to match CountryResult
-          const parsedCountries: CountryResult[] = rawList.map((item: any) => ({
-            cca3: item.cca3 || item.codes?.alpha_3 || item.code || item.id || '',
-            cca2: item.cca2 || item.codes?.alpha_2 || '',
-            name: {
-              common: item.name?.common || item.names?.common || '',
-              official: item.name?.official || item.names?.official || '',
-            },
-            flag: typeof item.flag === 'string' ? item.flag : (item.flag?.emoji || '🏳️'),
-            region: item.region || '',
-            capital: Array.isArray(item.capital) ? item.capital : [],
-            population: item.population || 0,
-            flags: {
-              png: item.flags?.png || item.flag?.url_png || '',
-              svg: item.flags?.svg || item.flag?.url_svg || '',
-            },
-          }));
+          const parsedCountries: CountryResult[] = rawList.map((item: any, index: number) => {
+            const commonName = item.name?.common || item.names?.common || '';
+            const fallbackCode = `country-${index}-${commonName.replace(/\s+/g, '')}`;
+            
+            return {
+              cca3: item.cca3 && item.cca3.trim() !== '' ? item.cca3 : fallbackCode,
+              cca2: item.cca2 || '',
+              name: {
+                common: commonName,
+                official: item.name?.official || item.names?.official || '',
+              },
+              flag: typeof item.flag === 'string' && item.flag.trim() !== '' 
+                ? item.flag 
+                : (item.flag?.emoji || '🏳️'),
+              region: item.region || '',
+              capital: Array.isArray(item.capital) ? item.capital : [],
+              population: item.population || 0,
+              flags: {
+                png: item.flags?.png || item.flag?.url_png || '',
+                svg: item.flags?.svg || item.flag?.url_svg || '',
+              },
+            };
+          });
 
-          // Sort alphabetically by common name
           parsedCountries.sort((a, b) => a.name.common.localeCompare(b.name.common));
-
           setAllCountries(parsedCountries);
         } else {
           console.error('No document found at app_data/countries');
@@ -116,16 +146,17 @@ export default function HomeScreen() {
 
   // Filter countries in real-time based on searchQuery
   const filteredResults = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allCountries; // Show all countries when input is empty/focused
-    }
+    if (!searchQuery.trim()) return [];
+    
     const query = searchQuery.toLowerCase().trim();
-    return allCountries.filter(
-      (country) =>
-        country.name?.common?.toLowerCase().includes(query) ||
-        country.name?.official?.toLowerCase().includes(query) ||
-        country.cca3?.toLowerCase().includes(query)
-    );
+
+    return allCountries
+      .filter((country) => 
+        country.name.common.toLowerCase().includes(query) ||
+        country.cca3.toLowerCase().includes(query) ||
+        country.cca2.toLowerCase().includes(query)
+      )
+      .slice(0, 7); // Cap the list length at 7 before passing to rendering
   }, [searchQuery, allCountries]);
   // Convert GeoJSON Features to SVG Paths
   const formattedRegions = useMemo(() => {
@@ -177,7 +208,7 @@ export default function HomeScreen() {
       },
     });
   };
-
+  console.log('allCountries length:', allCountries.length);
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -186,7 +217,7 @@ export default function HomeScreen() {
         <View style={styles.headerContainer}>
           <View>
             <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.nameText}>{MOCK_SESSION.name}</Text>
+            <Text style={styles.nameText}>{userName || 'Traveler'}</Text>
           </View>
           <View style={styles.headerIcons}>
             <TouchableOpacity style={styles.iconButton}>
@@ -198,7 +229,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-          <View style={styles.searchWrapper}>
+          <View style={[styles.searchWrapper, { zIndex: 1000, elevation: 1000 }]}>
             {/* Your existing Search TextInput/Bar */}
             {/* SEARCH BAR */}
             <View style={styles.searchSectionContainer}>
@@ -319,10 +350,14 @@ const styles = StyleSheet.create({
   },
   searchWrapper: {
     position: 'relative',
-    zIndex: 1000, // Forces the container and its absolute children above the map/cards
-    elevation: 1000, // Android stacking fix
+    zIndex: 1000, 
+    elevation: 1000, // Necessary for Android zIndex
     marginBottom: 16,
-    overflow: 'visible', // Ensure absolute children aren't clipped
+  },
+  searchSectionContainer: {
+    position: 'relative',
+    zIndex: 1000,
+    elevation: 1000,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -368,13 +403,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#eee',
-  },
-  // SEARCH BAR STYLES
-  searchSectionContainer: {
-    position: 'relative',
-    zIndex: 10,
-    marginBottom: 20,
-    overflow: 'visible', // Ensure absolute children aren't clipped
   },
   searchBarContainer: {
     flexDirection: 'row',

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router'; // 1. Added useLocalSearchParams
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+    ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
     StatusBar,
@@ -13,10 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Import your Firestore instance and query methods
+
 export default function Phone() {
   const router = useRouter();
 
-  // 2. Extract incoming parameters from Login (email, name, code, etc.)
   const params = useLocalSearchParams<{
     code?: string;
     email?: string;
@@ -27,8 +29,10 @@ export default function Phone() {
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [countryCode, setCountryCode] = useState('+1');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Simple validation check (e.g., 10 digits for standard phone numbers)
+  // Simple validation check
   const isPhoneValid = phoneNumber.replace(/\D/g, '').length >= 10;
 
   const handlePhoneSubmission = async () => {
@@ -70,7 +74,12 @@ export default function Phone() {
         </View>
 
         {/* Phone Input Row */}
-        <View style={styles.inputRowContainer}>
+        <View
+          style={[
+            styles.inputRowContainer,
+            errorMessage ? styles.inputRowError : null,
+          ]}
+        >
           {/* Country Code Selector */}
           <TouchableOpacity style={styles.countryPicker} activeOpacity={0.7}>
             <Text style={styles.countryCodeText}>{countryCode}</Text>
@@ -84,17 +93,22 @@ export default function Phone() {
             placeholderTextColor="#8E9AA0"
             keyboardType="phone-pad"
             value={phoneNumber}
-            onChangeText={setPhoneNumber}
+            onChangeText={(text) => {
+              setPhoneNumber(text);
+              if (errorMessage) setErrorMessage(''); // Clear error when typing
+            }}
             maxLength={15}
           />
         </View>
 
+        {/* Error Text Message */}
+        {!!errorMessage && (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        )}
+
         {/* Disclaimer / Terms Text */}
         <Text style={styles.disclaimerText}>
-          By submitting your phone number, you consent to being gay as FUCK and also to receive informational
-          messages at that number from ATLAS. Message and data rates may apply.
-          See our <Text style={styles.boldText}>Privacy Policy</Text> and{' '}
-          <Text style={styles.boldText}>Terms of Service</Text> for more information.
+          To verify your identity, we will send a code to your phone number.
         </Text>
       </KeyboardAvoidingView>
 
@@ -106,16 +120,31 @@ export default function Phone() {
             isPhoneValid ? styles.submitButtonActive : styles.submitButtonDisabled,
           ]}
           onPress={handlePhoneSubmission}
-          disabled={!isPhoneValid}
+          disabled={!isPhoneValid || loading}
           activeOpacity={0.8}
         >
-          <Text
-            style={[
-              styles.buttonText,
-              isPhoneValid ? styles.buttonTextActive : styles.buttonTextDisabled,
-            ]}
-          >
-            Submit
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text
+              style={[
+                styles.buttonText,
+                isPhoneValid ? styles.buttonTextActive : styles.buttonTextDisabled,
+              ]}
+            >
+              Submit
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Subtitle Login Link */}
+        <TouchableOpacity
+          style={styles.loginLinkContainer}
+          onPress={() => router.replace('/Login')} // Adjust path to your login screen
+          activeOpacity={0.7}
+        >
+          <Text style={styles.loginText}>
+            Already have an account? <Text style={styles.loginTextBold}>Log in</Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -126,7 +155,7 @@ export default function Phone() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3FBF7', // Retained light mint/pale background tint
+    backgroundColor: '#F3FBF7',
     paddingHorizontal: 24,
     paddingVertical: 20,
     justifyContent: 'space-between',
@@ -158,7 +187,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   title: {
-    fontSize: 28, // Scaled slightly down to fit the longer string gracefully
+    fontSize: 28,
     fontFamily: 'Playfair Display',
     letterSpacing: 1,
     color: '#0D1B2A',
@@ -176,7 +205,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#0D1B2A',
     paddingBottom: 8,
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  inputRowError: {
+    borderBottomColor: '#D90429', // Red highlight when error exists
+    borderBottomWidth: 2,
   },
   countryPicker: {
     flexDirection: 'row',
@@ -195,10 +228,17 @@ const styles = StyleSheet.create({
     color: '#0D1B2A',
     paddingVertical: 0,
   },
+  errorText: {
+    color: '#D90429',
+    fontSize: 13,
+    marginBottom: 12,
+    fontWeight: '500',
+  },
   disclaimerText: {
     fontSize: 13,
     color: '#8E9AA0',
     lineHeight: 18,
+    marginTop: 8,
   },
   boldText: {
     fontWeight: '600',
@@ -207,6 +247,7 @@ const styles = StyleSheet.create({
   buttonContainer: {
     width: '100%',
     paddingBottom: 20,
+    alignItems: 'center',
   },
   button: {
     height: 54,
@@ -216,10 +257,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   submitButtonDisabled: {
-    backgroundColor: '#9DAEAA', // Grayed-out state matching the reference button palette
+    backgroundColor: '#9DAEAA',
   },
   submitButtonActive: {
-    backgroundColor: '#0A111E', // Dark primary ATLAS active state
+    backgroundColor: '#0A111E',
   },
   buttonText: {
     fontSize: 16,
@@ -230,5 +271,17 @@ const styles = StyleSheet.create({
   },
   buttonTextActive: {
     color: '#FFFFFF',
+  },
+  loginLinkContainer: {
+    marginTop: 16,
+    paddingVertical: 4,
+  },
+  loginText: {
+    fontSize: 14,
+    color: '#5C6B73',
+  },
+  loginTextBold: {
+    fontWeight: '700',
+    color: '#0D1B2A',
   },
 });

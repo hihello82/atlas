@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "atlas",
@@ -57,7 +56,8 @@
       ],
       "expo-secure-store",
       "expo-apple-authentication",
-      "@react-native-firebase/auth/app.plugin.js"
+      "@react-native-firebase/auth/app.plugin.js",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
