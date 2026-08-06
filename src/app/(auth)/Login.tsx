@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { collection, getDocs, or, query, where } from 'firebase/firestore'; // Import Firestore functions
+import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useEffect, useState } from 'react';
+
 import {
   ActivityIndicator,
   Alert,
@@ -41,49 +42,55 @@ export default function Login() {
   const isFormFilled = identifier.trim().length > 0 && password.length > 0;
 
   // Handles Email / Phone + Password verification via Firestore
-  const handleLogin = async () => {
-    if (!isFormFilled) return;
+  // Handles Email + Password login using Firebase Auth, then verifies Firestore doc by UID
+const handleLogin = async () => {
+  if (!isFormFilled) return;
 
-    setLoading(true);
-    try {
-      const cleanIdentifier = identifier.trim();
-      const usersRef = collection(db, 'users');
+  setLoading(true);
+  try {
+    const cleanEmail = identifier.trim();
 
-      // 1. Query Firestore for a matching email OR phone number
-      const q = query(
-        usersRef,
-        or(
-          where('email', '==', cleanIdentifier),
-          where('phoneNumber', '==', cleanIdentifier)
-        )
-      );
+    // 1. Authenticate with Firebase Auth first
+    const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    const user = userCredential.user;
 
-      const querySnapshot = await getDocs(q);
+    // 2. Safely fetch the user's document directly using their UID
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDocSnap = await getDoc(userDocRef);
 
-      if (querySnapshot.empty) {
-        Alert.alert('Login Failed', 'No account found matching that email or phone number.');
-        setLoading(false);
-        return;
-      }
-
-      // 2. Check if password matches
-      const userDoc = querySnapshot.docs[0].data();
-      
-      if (userDoc.password !== password) {
-        Alert.alert('Login Failed', 'Incorrect password. Please try again.');
-        setLoading(false);
-        return;
-      }
-
-      // Success
+    if (userDocSnap.exists()) {
+      // Account exists in Firestore -> navigate to HomeScreen
       router.replace('/HomeScreen');
-    } catch (error: any) {
-      console.error('Login error:', error);
-      Alert.alert('Error', 'An error occurred while logging in. Please try again.');
-    } finally {
-      setLoading(false);
+    } else {
+      // User is authenticated but missing a Firestore profile -> route to completion screen
+      router.replace({
+        pathname: '/Phone',
+        params: {
+          email: user.email || '',
+          uid: user.uid,
+          code: 'incompleteProfile',
+        },
+      });
     }
-  };
+  } catch (error: any) {
+    console.error('Login error:', error);
+
+    // Provide friendly error messages for standard auth failures
+    if (
+      error.code === 'auth/invalid-credential' ||
+      error.code === 'auth/user-not-found' ||
+      error.code === 'auth/wrong-password'
+    ) {
+      Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
+    } else if (error.code === 'auth/invalid-email') {
+      Alert.alert('Login Failed', 'Please enter a valid email address.');
+    } else {
+      Alert.alert('Error', error.message || 'An error occurred while logging in.');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAppleLogin = async () => {
     try {
@@ -128,18 +135,13 @@ export default function Login() {
 
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(auth, credential);
-      const googleEmail = userCredential.user.email;
+      const user = userCredential.user;
 
-      if (!googleEmail) {
-        throw new Error('No email associated with this Google account.');
-      }
+      // Direct document lookup using UID (Compatible with your rules)
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
 
-      // Query Firestore to see if this Gmail exists in your DB
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', googleEmail));
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
+      if (userDocSnap.exists()) {
         // Account exists in Firestore -> navigate to HomeScreen
         router.replace('/HomeScreen');
       } else {
@@ -147,10 +149,10 @@ export default function Login() {
         router.replace({
           pathname: '/Phone',
           params: {
-            email: googleEmail,
-            name: userCredential.user.displayName || '',
-            photoUrl: userCredential.user.photoURL || '',
-            uid: userCredential.user.uid,
+            email: user.email || '',
+            name: user.displayName || '',
+            photoUrl: user.photoURL || '',
+            uid: user.uid,
             code: "incompleteGoogleProfile",
           },
         });

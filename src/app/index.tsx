@@ -27,6 +27,7 @@ export default function Index() {
           // First time ever opening the app -> Send to Onboarding/Login
           await AsyncStorage.setItem('hasLaunchedBefore', 'true');
           setAuthState({ isLoading: false, destination: '/Home' });
+          console.log('first time app launch, going to home');
         } else if (user) {
           // 3. User is authenticated with Firebase Auth -> Check if Firestore profile exists
           const usersRef = collection(db, 'users');
@@ -36,28 +37,21 @@ export default function Index() {
           if (!querySnapshot.empty) {
             // Profile exists in Firestore -> Send to Home
             setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
+            console.log('user is signed in and has firestore profile, going to homescreen');
           } else {
             // Profile missing in Firestore -> Force them back to CompleteProfile
-            setAuthState({
-              isLoading: false,
-              destination: {
-                pathname: '/CompleteProfile',
-                params: {
-                  email: user.email || '',
-                  name: user.displayName || '',
-                  photoUrl: user.photoURL || '',
-                  uid: user.uid,
-                },
-              },
-            });
+            setAuthState({ isLoading: false, destination: '/Home' });
+            console.log('user is signed in but does not have firestore profile, going to home');
           }
         } else {
           // User is signed out -> Send to Login
           setAuthState({ isLoading: false, destination: '/Home' });
+          console.log('user is signed out, going to home');
         }
       } catch (error) {
         // Fallback to login on error
         setAuthState({ isLoading: false, destination: '/Home' });
+        console.log('error, going to home');
       }
     });
 
