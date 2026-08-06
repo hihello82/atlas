@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { useRouter } from 'expo-router';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -17,9 +18,16 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../../../config/firebaseConfig';
+import { auth, db } from '../../../config/firebaseConfig';
 
 export default function SignUp() {
+
+    const { phoneNumber, countryCode } = useLocalSearchParams<{
+    phoneNumber: string;
+    countryCode?: string;
+    }>();
+
+    console.log(countryCode + ' ' + phoneNumber)
   const router = useRouter();
 
   // Form Field States
@@ -105,10 +113,32 @@ export default function SignUp() {
     passwordMeetsRequirements &&
     doPasswordsMatch;
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     if (!isFormValid) return;
-    router.replace('/HomeScreen');
-  };
+
+    try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Combine country code and phone number if present
+        const fullPhoneNumber = phoneNumber ? `${countryCode || ''}${phoneNumber}` : null;
+
+        await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: user.email,
+        phoneNumber: fullPhoneNumber,
+        countryCode: countryCode || null,
+        rawPhoneNumber: phoneNumber || null,
+        createdAt: new Date().toISOString(),
+        });
+
+        router.replace('/HomeScreen');
+    } catch (error: any) {
+        Alert.alert('Sign-Up Error', error.message);
+    }
+};
 
   const handleAppleLogin = async () => {
     try {
@@ -133,30 +163,48 @@ export default function SignUp() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+    const handleGoogleLogin = async () => {
     try {
-      if (Platform.OS === 'android') {
+        if (Platform.OS === 'android') {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      }
+        }
 
-      const response = await GoogleSignin.signIn();
-      const idToken = response.data?.idToken || (response as any).idToken;
+        const response = await GoogleSignin.signIn();
+        const idToken = response.data?.idToken || (response as any).idToken;
 
-      if (!idToken) throw new Error('Failed to retrieve Google ID token.');
+        if (!idToken) throw new Error('Failed to retrieve Google ID token.');
 
-      const credential = GoogleAuthProvider.credential(idToken);
-      await signInWithCredential(auth, credential);
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        const user = userCredential.user;
 
-      router.replace('/HomeScreen');
+        // Save/update Google user profile in Firestore
+        await setDoc(
+            doc(db, 'users', user.uid),
+            {
+                uid: user.uid,
+                firstName: user.displayName?.split(' ')[0] || '',
+                lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+                email: user.email,
+                photoURL: user.photoURL || '',
+                phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
+                countryCode: countryCode || null,
+                rawPhoneNumber: phoneNumber || null,
+                lastLoginAt: new Date().toISOString(),
+            },
+            { merge: true }
+        );
+
+        router.replace('/HomeScreen');
     } catch (error: any) {
-      if (
+        if (
         error.code !== statusCodes.SIGN_IN_CANCELLED &&
         !error.message?.includes('cancelled')
-      ) {
+        ) {
         Alert.alert('Sign-Up Failed', error.message || 'Google Sign-Up was unsuccessful.');
-      }
+        }
     }
-  };
+    };
 
   const showEmailError = email.trim().length > 0 && !isEmailValid;
   const showPasswordError = password.length > 0 && !isPasswordValid;

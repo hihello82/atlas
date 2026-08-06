@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router'; // 1. Added useLocalSearchParams
 import { useState } from 'react';
 import {
     KeyboardAvoidingView,
@@ -15,6 +15,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function Phone() {
   const router = useRouter();
+
+  // 2. Extract incoming parameters from Login (email, name, code, etc.)
+  const params = useLocalSearchParams<{
+    code?: string;
+    email?: string;
+    name?: string;
+    photoUrl?: string;
+    uid?: string;
+  }>();
+
   const [phoneNumber, setPhoneNumber] = useState('');
   const [countryCode, setCountryCode] = useState('+1');
 
@@ -26,7 +36,11 @@ export default function Phone() {
     
     router.push({
         pathname: '/VerifyPhone',
-        params: { phoneNumber, countryCode },
+        params: { 
+          ...params,
+          phoneNumber, 
+          countryCode 
+        },
     });
     };
 

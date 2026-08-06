@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Href, Redirect } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { collection, getDocs, query, where } from 'firebase/firestore'; // 1. Added Firestore imports
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { auth } from '../../config/firebaseConfig';
+import { auth, db } from '../../config/firebaseConfig'; // 2. Added db import
 
 type AuthState = {
   isLoading: boolean;
@@ -27,8 +28,29 @@ export default function Index() {
           await AsyncStorage.setItem('hasLaunchedBefore', 'true');
           setAuthState({ isLoading: false, destination: '/Home' });
         } else if (user) {
-          // User is authenticated with Firebase -> Send to Home
-          setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
+          // 3. User is authenticated with Firebase Auth -> Check if Firestore profile exists
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('email', '==', user.email));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            // Profile exists in Firestore -> Send to Home
+            setAuthState({ isLoading: false, destination: '/(tabs)/HomeScreen' });
+          } else {
+            // Profile missing in Firestore -> Force them back to CompleteProfile
+            setAuthState({
+              isLoading: false,
+              destination: {
+                pathname: '/CompleteProfile',
+                params: {
+                  email: user.email || '',
+                  name: user.displayName || '',
+                  photoUrl: user.photoURL || '',
+                  uid: user.uid,
+                },
+              },
+            });
+          }
         } else {
           // User is signed out -> Send to Login
           setAuthState({ isLoading: false, destination: '/Home' });

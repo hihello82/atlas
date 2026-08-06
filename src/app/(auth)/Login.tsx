@@ -3,8 +3,10 @@ import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-si
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { collection, getDocs, or, query, where } from 'firebase/firestore'; // Import Firestore functions
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -17,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../../../config/firebaseConfig';
+import { auth, db } from '../../../config/firebaseConfig'; // Import your db (Firestore instance)
 
 export default function Login() {
   const router = useRouter();
@@ -25,6 +27,7 @@ export default function Login() {
   // Form Field States
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Configure Google Sign-In
   useEffect(() => {
@@ -35,12 +38,51 @@ export default function Login() {
     });
   }, []);
 
-  // Form is enabled when both fields have content (no validation needed before submit)
   const isFormFilled = identifier.trim().length > 0 && password.length > 0;
 
-  const handleLogin = () => {
+  // Handles Email / Phone + Password verification via Firestore
+  const handleLogin = async () => {
     if (!isFormFilled) return;
-    router.replace('/HomeScreen');
+
+    setLoading(true);
+    try {
+      const cleanIdentifier = identifier.trim();
+      const usersRef = collection(db, 'users');
+
+      // 1. Query Firestore for a matching email OR phone number
+      const q = query(
+        usersRef,
+        or(
+          where('email', '==', cleanIdentifier),
+          where('phoneNumber', '==', cleanIdentifier)
+        )
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        Alert.alert('Login Failed', 'No account found matching that email or phone number.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Check if password matches
+      const userDoc = querySnapshot.docs[0].data();
+      
+      if (userDoc.password !== password) {
+        Alert.alert('Login Failed', 'Incorrect password. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Success
+      router.replace('/HomeScreen');
+    } catch (error: any) {
+      console.error('Login error:', error);
+      Alert.alert('Error', 'An error occurred while logging in. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAppleLogin = async () => {
@@ -70,6 +112,7 @@ export default function Login() {
     }
   };
 
+  // Handles Google Sign-In and Firestore email existence check
   const handleGoogleLogin = async () => {
     try {
       if (Platform.OS === 'android') {
@@ -85,9 +128,33 @@ export default function Login() {
 
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(auth, credential);
+      const googleEmail = userCredential.user.email;
 
-      console.log('Firebase Sign-In Success:', userCredential.user);
-      router.replace('/HomeScreen');
+      if (!googleEmail) {
+        throw new Error('No email associated with this Google account.');
+      }
+
+      // Query Firestore to see if this Gmail exists in your DB
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', googleEmail));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        // Account exists in Firestore -> navigate to HomeScreen
+        router.replace('/HomeScreen');
+      } else {
+        // Account does NOT exist -> navigate and pass user details as params
+        router.replace({
+          pathname: '/Phone',
+          params: {
+            email: googleEmail,
+            name: userCredential.user.displayName || '',
+            photoUrl: userCredential.user.photoURL || '',
+            uid: userCredential.user.uid,
+            code: "incompleteGoogleProfile",
+          },
+        });
+      }
     } catch (error: any) {
       if (
         error.code === statusCodes.SIGN_IN_CANCELLED ||
@@ -170,20 +237,24 @@ export default function Login() {
             <TouchableOpacity
               style={[
                 styles.button,
-                isFormFilled ? styles.submitButtonActive : styles.submitButtonDisabled,
+                isFormFilled && !loading ? styles.submitButtonActive : styles.submitButtonDisabled,
               ]}
               onPress={handleLogin}
-              disabled={!isFormFilled}
+              disabled={!isFormFilled || loading}
               activeOpacity={0.8}
             >
-              <Text
-                style={[
-                  styles.buttonText,
-                  isFormFilled ? styles.buttonTextActive : styles.buttonTextDisabled,
-                ]}
-              >
-                Log In
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text
+                  style={[
+                    styles.buttonText,
+                    isFormFilled ? styles.buttonTextActive : styles.buttonTextDisabled,
+                  ]}
+                >
+                  Log In
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
 

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
-    KeyboardAvoidingView,
+    Alert, KeyboardAvoidingView,
     Platform,
     StatusBar,
     StyleSheet,
@@ -10,14 +11,20 @@ import {
     TextInput,
     TouchableOpacity,
     View
-} from 'react-native';
+} from 'react-native'; // Added Alert for error handling
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { db } from '../../../config/firebaseConfig'; // Adjust relative path if needed
 
 export default function VerifyPhone() {
   // Extract parameters passed from the previous screen
-  const { phoneNumber, countryCode } = useLocalSearchParams<{
+  const { phoneNumber, countryCode, code, email, name, photoUrl, uid } = useLocalSearchParams<{
     phoneNumber: string;
     countryCode?: string;
+    code?: string;
+    email?: string;
+    name?: string;
+    photoUrl?: string;
+    uid?: string;
   }>();
 
   // Fallback defaults if accessed directly or missing
@@ -92,13 +99,53 @@ export default function VerifyPhone() {
     }
   };
 
-  const handleNextSubmission = async () => {
-    if (!isOtpComplete) return;
-    // Placeholder for validating code with Firebase
+const handleNextSubmission = async () => {
+  if (!isOtpComplete) return;
+
+  try {
+    // 1. Verify OTP code with Firebase here if needed
     console.log('Firebase: Verifying OTP Code...', otp.join(''));
-    router.push('/SignUp')
-    // router.push('/NextScreen');
-  };
+
+    // 2. Handle Google flow if the profile was incomplete
+    if (code === 'incompleteGoogleProfile') {
+      const fullPhoneNumber = phoneNumber ? `${countryCode || ''}${phoneNumber}` : null;
+      const nameParts = (name || '').trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      // If uid is provided from params, use it; otherwise fallback or construct doc
+      if (uid) {
+        await setDoc(
+          doc(db, 'users', uid),
+          {
+            uid: uid,
+            firstName: firstName,
+            lastName: lastName,
+            email: email || '',
+            photoURL: photoUrl || '',
+            phoneNumber: fullPhoneNumber,
+            countryCode: countryCode || null,
+            rawPhoneNumber: phoneNumber || null,
+            createdAt: new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+
+      router.replace('/HomeScreen');
+    } else {
+      // Standard sign-up flow
+      router.push({
+        pathname: '/SignUp',
+        params: { phoneNumber, countryCode },
+      });
+    }
+  } catch (error: any) {
+    console.error('Error saving user to Firestore:', error);
+    Alert.alert('Error', 'Failed to update profile. Please try again.');
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
