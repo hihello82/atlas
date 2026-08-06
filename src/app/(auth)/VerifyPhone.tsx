@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     Alert, KeyboardAvoidingView,
@@ -13,18 +12,18 @@ import {
     View
 } from 'react-native'; // Added Alert for error handling
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../../config/firebaseConfig'; // Adjust relative path if needed
 
 export default function VerifyPhone() {
   // Extract parameters passed from the previous screen
-  const { phoneNumber, countryCode, code, email, name, photoUrl, uid } = useLocalSearchParams<{
+  const { phoneNumber, countryCode, uid, email, firstName, lastName, photoURL, code } = useLocalSearchParams<{
     phoneNumber: string;
     countryCode?: string;
-    code?: string;
-    email?: string;
-    name?: string;
-    photoUrl?: string;
     uid?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    photoURL?: string;
+    code?: string;
   }>();
 
   // Fallback defaults if accessed directly or missing
@@ -108,32 +107,18 @@ const handleNextSubmission = async () => {
 
     // 2. Handle Google flow if the profile was incomplete
     if (code === 'incompleteGoogleProfile') {
-      const fullPhoneNumber = phoneNumber ? `${countryCode || ''}${phoneNumber}` : null;
-      const nameParts = (name || '').trim().split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      // If uid is provided from params, use it; otherwise fallback or construct doc
-      if (uid) {
-        await setDoc(
-          doc(db, 'users', uid),
-          {
+        router.push({
+            pathname: '/UsernameOnboarding',
+            params: {
             uid: uid,
+            email: email || '',
             firstName: firstName,
             lastName: lastName,
-            email: email || '',
-            photoURL: photoUrl || '',
-            phoneNumber: fullPhoneNumber,
-            countryCode: countryCode || null,
-            rawPhoneNumber: phoneNumber || null,
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      }
-
-      router.replace('/HomeScreen');
+            photoURL: photoURL || '',
+            phoneNumber: phoneNumber || '',
+            countryCode: countryCode || ''
+            }
+        });
     } else {
       // Standard sign-up flow
       router.push({

@@ -21,11 +21,12 @@ export default function Phone() {
   const router = useRouter();
 
   const params = useLocalSearchParams<{
-    code?: string;
-    email?: string;
-    name?: string;
-    photoUrl?: string;
     uid?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    photoURL?: string;
+    code?: string;
   }>();
 
   const [phoneNumber, setPhoneNumber] = useState('');

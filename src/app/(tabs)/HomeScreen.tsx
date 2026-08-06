@@ -62,23 +62,22 @@ const MAP_HEIGHT = 210;
 export default function HomeScreen() {
   const router = useRouter();
 
-  const [userName, setUserName] = useState('');
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Fetch user metadata stored under users/{userId}
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
 
           if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            // Use firstName/lastName if available, or fall back to displayName
-            const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
-            setUserName(fullName || user.displayName || 'Traveler');
+            setUserProfile(userDocSnap.data());
           } else {
-            setUserName(user.displayName || 'Traveler');
+            setUserProfile({
+              firstName: user.displayName?.split(' ')[0] || 'Traveler',
+              lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+            });
           }
         } catch (err) {
           console.error('Error fetching user profile:', err);
@@ -86,8 +85,8 @@ export default function HomeScreen() {
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+  return () => unsubscribe();
+}, []);
 
   // State for map colors & search query
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
@@ -211,9 +210,12 @@ export default function HomeScreen() {
         
         {/* HEADER */}
         <View style={styles.headerContainer}>
+          {/* 1. Header Name */}
           <View>
             <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.nameText}>{userName || 'Traveler'}</Text>
+            <Text style={styles.nameText}>
+              {`${userProfile?.firstName || ''} ${userProfile?.lastName || ''}`.trim() || 'Traveler'}
+            </Text>
           </View>
           <View style={styles.headerIcons}>
             <TouchableOpacity style={styles.iconButton}>
@@ -304,7 +306,9 @@ export default function HomeScreen() {
         {/* STATS SECTION */}
         <View style={styles.statsContainer}>
           <TouchableOpacity style={[styles.statBox, styles.statBoxBlue]}>
-            <Text style={[styles.statNumber, styles.textBlue]}>{MOCK_CLOUD_DATA.stats.countries}</Text>
+            <Text style={[styles.statNumber, styles.textBlue]}>
+              {userProfile?.stats?.countriesVisited ?? 0}
+            </Text>
             <Text style={styles.statLabel}>Countries</Text>
           </TouchableOpacity>
 
@@ -312,7 +316,9 @@ export default function HomeScreen() {
             style={[styles.statBox, styles.statBoxGreen]}
             onPress={() => router.push('../subtabs/Cities')}
           >
-            <Text style={[styles.statNumber, styles.textGreen]}>{MOCK_CLOUD_DATA.stats.cities}</Text>
+            <Text style={[styles.statNumber, styles.textGreen]}>
+              {userProfile?.stats?.citiesVisited ?? 0}
+            </Text>
             <Text style={styles.statLabel}>Cities</Text>
           </TouchableOpacity>
 
