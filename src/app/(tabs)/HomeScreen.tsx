@@ -308,7 +308,10 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>Countries</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.statBox, styles.statBoxGreen]}>
+          <TouchableOpacity 
+            style={[styles.statBox, styles.statBoxGreen]}
+            onPress={() => router.push('/Cities')}
+          >
             <Text style={[styles.statNumber, styles.textGreen]}>{MOCK_CLOUD_DATA.stats.cities}</Text>
             <Text style={styles.statLabel}>Cities</Text>
           </TouchableOpacity>
