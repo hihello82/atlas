@@ -301,7 +301,7 @@ export default function SignUp() {
           {/* Horizontal Divider */}
           <View style={styles.dividerContainer}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or sign up with</Text>
+            <Text style={styles.dividerText}>or continue with</Text>
             <View style={styles.dividerLine} />
           </View>
 

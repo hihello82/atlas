@@ -3,34 +3,48 @@ import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-si
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
+  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../../config/firebaseConfig';
 
-export default function Login(){
+export default function Login() {
   const router = useRouter();
 
+  // Form Field States
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+
+  // Configure Google Sign-In
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: '590334508658-m0hjp221cde13m1c51ae2slacvp58tp8.apps.googleusercontent.com', // Required for obtaining idToken (from Google Cloud / Firebase Console)
-      iosClientId: '590334508658-6bhi602t4h1qho8q241oq2a3qtmhqjiq.apps.googleusercontent.com', // Optional: Needed if using iOS without GoogleService-Info.plist
+      webClientId: '590334508658-m0hjp221cde13m1c51ae2slacvp58tp8.apps.googleusercontent.com',
+      iosClientId: '590334508658-6bhi602t4h1qho8q241oq2a3qtmhqjiq.apps.googleusercontent.com',
       offlineAccess: true,
     });
   }, []);
 
-  // will NOT work until i pay the greedy jews at apple so we'll have to wait and see
+  // Form is enabled when both fields have content (no validation needed before submit)
+  const isFormFilled = identifier.trim().length > 0 && password.length > 0;
+
+  const handleLogin = () => {
+    if (!isFormFilled) return;
+    router.replace('/HomeScreen');
+  };
+
   const handleAppleLogin = async () => {
-    try{
+    try {
       const isAvailable = await AppleAuthentication.isAvailableAsync();
       if (!isAvailable) {
         Alert.alert('Authentication Failed', 'Sign-In with Apple is currently unavailable');
@@ -44,22 +58,9 @@ export default function Login(){
         ],
       });
 
-      const name = credential.fullName
-        ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
-        : null;
-      const email = credential.email;
-
-      console.log('Apple Sign-In Success:', {
-        userToken: credential.identityToken,
-        userId: credential.user,
-        name,
-        email,
-      });
-      
+      console.log('Apple Sign-In Success:', credential);
       router.replace('/HomeScreen');
-
     } catch (error: any) {
-      // Handle user cancellation gracefully vs. actual error
       if (error.code === 'ERR_REQUEST_CANCELED') {
         console.log('User canceled Apple Sign-In');
       } else {
@@ -70,136 +71,161 @@ export default function Login(){
   };
 
   const handleGoogleLogin = async () => {
-  try {
-    // 1. Check Google Play Services (Android)
-    if (Platform.OS === 'android') {
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    try {
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      }
+
+      const response = await GoogleSignin.signIn();
+      const idToken = response.data?.idToken || (response as any).idToken;
+
+      if (!idToken) {
+        throw new Error('Failed to retrieve Google ID token.');
+      }
+
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+
+      console.log('Firebase Sign-In Success:', userCredential.user);
+      router.replace('/HomeScreen');
+    } catch (error: any) {
+      if (
+        error.code === statusCodes.SIGN_IN_CANCELLED ||
+        error.message?.includes('cancelled')
+      ) {
+        console.log('User canceled Google Sign-In');
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        console.log('Sign-in is already in progress');
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert('Error', 'Google Play Services are not available or updated on this device.');
+      } else {
+        console.error('Google Sign-In Error:', error);
+        Alert.alert('Sign In Failed', error.message || 'Google Sign-In was unsuccessful.');
+      }
     }
-
-    // 2. Prompt native Google Sign-In sheet
-    const response = await GoogleSignin.signIn();
-    
-    // In newer library versions data is under response.data, in older under response
-    const idToken = response.data?.idToken || (response as any).idToken;
-
-    if (!idToken) {
-      throw new Error('Failed to retrieve Google ID token.');
-    }
-
-    // 3. Create Firebase Credential
-    const credential = GoogleAuthProvider.credential(idToken);
-
-    // 4. SIGN IN TO FIREBASE (Missing Step!)
-    const userCredential = await signInWithCredential(auth, credential);
-    const firebaseUser = userCredential.user;
-
-    console.log('Firebase Sign-In Success:', {
-      uid: firebaseUser.uid,
-      name: firebaseUser.displayName,
-      email: firebaseUser.email,
-    });
-
-    // 5. Navigate to confirm phone #
-    router.replace('/HomeScreen');
-
-  } catch (error: any) {
-    if (
-      error.code === statusCodes.SIGN_IN_CANCELLED || 
-      error.message?.includes('cancelled')
-    ) {
-      console.log('User canceled Google Sign-In');
-    } else if (error.code === statusCodes.IN_PROGRESS) {
-      console.log('Sign-in is already in progress');
-    } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-      Alert.alert('Error', 'Google Play Services are not available or updated on this device.');
-    } else {
-      console.error('Google Sign-In Error:', error);
-      Alert.alert('Sign In Failed', error.message || 'Google Sign-In was unsuccessful.');
-    }
-  }
-  };
-
-  const handleEmailLogin = async () => {
-    router.push('/EmailLogin');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Top Navigation / Back Button */}
+      {/* Top Navigation Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={() => router.back()} 
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
         </TouchableOpacity>
       </View>
 
-      {/* Top Branding Section */}
-      <View style={styles.topSection}>
-        {/* Circular Logo Wrapper */}
-        <View style={styles.logoContainer}>
-          <Image
-            source={require('atlas/assets/logo.jpeg')} // Replace with your image path
-            style={styles.logo}
-            resizeMode="cover"
-          />
-        </View>
-
-        {/* Title and Subtitle */}
-        <Text style={styles.title}>ATLAS</Text>
-        <Text style={styles.subtitle}>
-          Explore the world. Track every journey.
-        </Text>
-      </View>
-
-      {/* Buttons Section */}
-      <View style={styles.buttonContainer}>
-        {/* Apple Button */}
-        <TouchableOpacity
-          style={[styles.button, styles.appleButton]}
-          onPress={handleAppleLogin}
-          activeOpacity={0.8}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.appleButtonText}>Continue with Apple</Text>
-        </TouchableOpacity>
+          {/* Header Text Section */}
+          <View style={styles.textSection}>
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Enter your details below to continue</Text>
+          </View>
 
-        {/* Google Button */}
-        <TouchableOpacity
-          style={[styles.button, styles.outlinedButton]}
-          onPress={handleGoogleLogin}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.outlinedButtonText}>Continue with Google</Text>
-        </TouchableOpacity>
+          {/* Form Fields */}
+          <View style={styles.formContainer}>
+            {/* Email or Phone Input */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address or Phone Number"
+                placeholderTextColor="#8E9AA0"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={identifier}
+                onChangeText={setIdentifier}
+              />
+            </View>
 
-        {/* Email Button */}
-        <TouchableOpacity
-          style={[styles.button, styles.outlinedButton]}
-          onPress={handleEmailLogin}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.outlinedButtonText}>Continue with email or phone</Text>
-        </TouchableOpacity>
-      </View>
+            {/* Password Input */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#8E9AA0"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </View>
+          </View>
+
+          {/* Login Button */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                isFormFilled ? styles.submitButtonActive : styles.submitButtonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={!isFormFilled}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.buttonText,
+                  isFormFilled ? styles.buttonTextActive : styles.buttonTextDisabled,
+                ]}
+              >
+                Log In
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Horizontal Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or continue with</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Social Log-In Buttons Row */}
+          <View style={styles.socialRow}>
+            {/* Google Button */}
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={handleGoogleLogin}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-google" size={24} color="#0D1B2A" />
+            </TouchableOpacity>
+
+            {/* Apple Button */}
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={handleAppleLogin}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-apple" size={24} color="#0D1B2A" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3FBF7', // Light mint/pale background gradient tint
-    justifyContent: 'space-between',
+    backgroundColor: '#F3FBF7',
     paddingHorizontal: 24,
     paddingVertical: 20,
-  },
-  topSection: {
-    alignItems: 'center',
-    marginTop: 40,
   },
   header: {
     width: '100%',
@@ -219,72 +245,102 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
   },
-  logoContainer: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    marginTop: -20,
-    // Soft drop shadow around circular logo
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 4,
+  scrollContent: {
+    paddingTop: 24,
+    paddingBottom: 120,
+    flexGrow: 1,
   },
-  logo: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
+  textSection: {
+    alignItems: 'flex-start',
+    marginBottom: 20,
   },
   title: {
-    fontSize: 48,
-    fontFamily: 'Playfair Display', // Or custom serif font like 'Playfair Display' / 'Georgia'
-    letterSpacing: 4,
+    fontSize: 28,
+    fontFamily: 'Playfair Display',
+    letterSpacing: 1,
     color: '#0D1B2A',
-    fontWeight: '500',
-    marginBottom: 12,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#5C6B73',
     fontWeight: '400',
-    textAlign: 'center',
+  },
+  formContainer: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  inputContainer: {
+    width: '100%',
+  },
+  input: {
+    fontSize: 16,
+    color: '#0D1B2A',
+    borderBottomWidth: 1,
+    borderBottomColor: '#0D1B2A',
+    paddingVertical: 8,
   },
   buttonContainer: {
-    flex: 1,
-    width: '80%',
-    alignSelf: 'center',
-    justifyContent: 'center',
+    width: '100%',
     marginBottom: 20,
-    gap: 12,
   },
   button: {
-    height: 56,
-    borderRadius: 28,
+    height: 54,
+    borderRadius: 27,
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row',
+    width: '100%',
   },
-  appleButton: {
+  submitButtonDisabled: {
+    backgroundColor: '#9DAEAA',
+  },
+  submitButtonActive: {
     backgroundColor: '#0A111E',
   },
-  appleButtonText: {
-    color: '#FFFFFF',
+  buttonText: {
     fontSize: 16,
     fontWeight: '600',
   },
-  outlinedButton: {
+  buttonTextDisabled: {
+    color: '#FFFFFF',
+  },
+  buttonTextActive: {
+    color: '#FFFFFF',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#C5D3CE',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 14,
+    color: '#5C6B73',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+  },
+  socialButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E1E8E5',
-  },
-  outlinedButtonText: {
-    color: '#0A111E',
-    fontSize: 16,
-    fontWeight: '600',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
 });
