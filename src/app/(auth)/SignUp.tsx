@@ -22,6 +22,9 @@ import { auth } from '../../../config/firebaseConfig';
 
 export default function SignUp() {
 
+    const [usernameError, setUsernameError] = useState('');
+    const [emailRegisteredError, setEmailRegisteredError] = useState(false);
+
     const { phoneNumber, countryCode } = useLocalSearchParams<{
     phoneNumber: string;
     countryCode?: string;
@@ -117,17 +120,40 @@ export default function SignUp() {
     const handleSignUp = async () => {
     if (!isFormValid) return;
 
+    // Clear pre-existing error messages
+    setUsernameError('');
+    setEmailRegisteredError(false);
+
     try {
-        console.log('hi')
+        const functions = getFunctions();
+        const checkAvailability = httpsCallable<
+        { email: string; username: string },
+        { emailAvailable: boolean; usernameAvailable: boolean }
+        >(functions, 'checkAvailability');
+
+        const availability = await checkAvailability({
+        email: email.trim(),
+        username: username.trim(),
+        });
+
+        let hasError = false;
+
+        if (!availability.data.usernameAvailable) {
+        setUsernameError('Please choose a different username.');
+        hasError = true;
+        }
+
+        if (!availability.data.emailAvailable) {
+        setEmailRegisteredError(true);
+        hasError = true;
+        }
+
+        if (hasError) return;
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        console.log('bye')
         const user = userCredential.user;
 
-        const functions = getFunctions();
-        console.log('bye')
         const createUserProfile = httpsCallable(functions, 'createUserProfile');
-console.log('sdf')
-        // Call Cloud Function to perform writes
         await createUserProfile({
         uid: user.uid,
         username: username.trim(),
@@ -169,7 +195,27 @@ console.log('sdf')
   };
 
     const handleGoogleLogin = async () => {
+    setUsernameError('');
+    setEmailRegisteredError(false);
+
     try {
+        const targetUsername = username.trim();
+
+        if (targetUsername) {
+        const functions = getFunctions();
+        const checkAvailability = httpsCallable<
+            { username: string },
+            { usernameAvailable: boolean }
+        >(functions, 'checkAvailability');
+
+        const availability = await checkAvailability({ username: targetUsername });
+
+        if (!availability.data.usernameAvailable) {
+            setUsernameError('Please choose a different username.');
+            return;
+        }
+        }
+
         if (Platform.OS === 'android') {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         }
@@ -186,10 +232,9 @@ console.log('sdf')
         const functions = getFunctions();
         const createUserProfile = httpsCallable(functions, 'createUserProfile');
 
-        // Call Cloud Function to handle Firestore writes
         await createUserProfile({
         uid: user.uid,
-        username: username.trim() || user.email?.split('@')[0], // Fallback if no username typed prior to Google login
+        username: targetUsername || user.email?.split('@')[0],
         firstName: user.displayName?.split(' ')[0] || '',
         lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
         email: user.email,
@@ -274,32 +319,51 @@ console.log('sdf')
             {/* Username Input */}
             <View style={styles.inputContainer}>
             <TextInput
-                style={styles.input}
+                style={[
+                styles.input,
+                !!usernameError && styles.inputError,
+                ]}
                 placeholder="Username"
                 placeholderTextColor="#8E9AA0"
                 autoCapitalize="none"
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={(text) => {
+                setUsername(text);
+                if (usernameError) setUsernameError('');
+                }}
             />
+            {!!usernameError && (
+                <Text style={styles.errorText}>{usernameError}</Text>
+            )}
             </View>
 
             {/* Email Input */}
             <View style={styles.inputContainer}>
-              <TextInput
+            <TextInput
                 style={[
-                  styles.input,
-                  showEmailError && styles.inputError,
+                styles.input,
+                (showEmailError || emailRegisteredError) && styles.inputError,
                 ]}
                 placeholder="Email Address"
                 placeholderTextColor="#8E9AA0"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={email}
-                onChangeText={setEmail}
-              />
-              {showEmailError && (
+                onChangeText={(text) => {
+                setEmail(text);
+                if (emailRegisteredError) setEmailRegisteredError(false);
+                }}
+            />
+            {showEmailError && (
                 <Text style={styles.errorText}>Please enter a valid email address.</Text>
-              )}
+            )}
+            {emailRegisteredError && (
+                <TouchableOpacity onPress={() => router.replace('/Login')}>
+                <Text style={styles.errorText}>
+                    There is already an account with this email. <Text style={{ fontWeight: 'bold' }}>Log in</Text>
+                </Text>
+                </TouchableOpacity>
+            )}
             </View>
 
             {/* Password Input */}

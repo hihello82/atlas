@@ -1,8 +1,9 @@
 import * as admin from "firebase-admin";
-import { setGlobalOptions } from "firebase-functions";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import {setGlobalOptions} from "firebase-functions";
+import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 // Re-using existing initialized db reference
+admin.initializeApp();
 const db = admin.firestore();
 
 // Global configuration

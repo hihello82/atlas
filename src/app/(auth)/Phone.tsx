@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useState } from 'react';
 import {
     ActivityIndicator,
@@ -35,17 +36,40 @@ export default function Phone() {
   // Simple validation check
   const isPhoneValid = phoneNumber.replace(/\D/g, '').length >= 10;
 
-  const handlePhoneSubmission = async () => {
+    const handlePhoneSubmission = async () => {
     if (!isPhoneValid) return;
-    
-    router.push({
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+        const fullPhoneNumber = `${countryCode}${phoneNumber.replace(/\D/g, '')}`;
+        const functions = getFunctions();
+        const checkAvailability = httpsCallable<{ phoneNumber: string }, { phoneNumberAvailable: boolean }>(
+        functions,
+        'checkAvailability'
+        );
+
+        const result = await checkAvailability({ phoneNumber: fullPhoneNumber });
+
+        if (!result.data.phoneNumberAvailable) {
+        setErrorMessage('There is already an account with this phone number.');
+        setLoading(false);
+        return;
+        }
+
+        setLoading(false);
+        router.push({
         pathname: '/VerifyPhone',
         params: { 
-          ...params,
-          phoneNumber, 
-          countryCode 
+            ...params,
+            phoneNumber, 
+            countryCode 
         },
-    });
+        });
+    } catch (error: any) {
+        setLoading(false);
+        setErrorMessage('An error occurred while verifying the phone number.');
+    }
     };
 
   return (

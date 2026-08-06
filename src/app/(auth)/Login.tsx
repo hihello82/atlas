@@ -182,7 +182,7 @@ const handleLogin = async () => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/Home')}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={24} color="#0D1B2A" />

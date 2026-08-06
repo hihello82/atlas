@@ -3,5 +3,9 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
-  }
+  },
+  // "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+  // "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+  // "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": false,
+  // "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": false
 }
