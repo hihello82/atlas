@@ -2,11 +2,9 @@ import * as admin from "firebase-admin";
 import {setGlobalOptions} from "firebase-functions";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
-// Re-using existing initialized db reference
 admin.initializeApp();
 const db = admin.firestore();
 
-// Global configuration
 setGlobalOptions({maxInstances: 10});
 
 interface CheckAvailabilityData {
@@ -21,10 +19,6 @@ interface CheckAvailabilityResponse {
   usernameAvailable?: boolean;
 }
 
-/**
- * Checks if email, phoneNumber, or username are available.
- * Accessible by unauthenticated users before account creation.
- */
 export const checkAvailability = onCall<
   CheckAvailabilityData,
   Promise<CheckAvailabilityResponse>
@@ -58,9 +52,7 @@ export const checkAvailability = onCall<
     keys.push("username");
   }
 
-  // Fetch all requested lookup documents in a single parallel batch call
   const snapshots = await db.getAll(...refsToFetch);
-
   const response: CheckAvailabilityResponse = {};
 
   snapshots.forEach((snap, index) => {
@@ -75,7 +67,7 @@ export const checkAvailability = onCall<
   return response;
 });
 
-// Interface for input data
+// Updated interface to support inputs and override option for defaults
 interface UserProfileData {
   uid: string;
   username?: string;
@@ -85,12 +77,24 @@ interface UserProfileData {
   phoneNumber?: string | null;
   countryCode?: string | null;
   rawPhoneNumber?: string | null;
-  photoURL?: string;
-  isGoogleSignIn?: boolean;
+  profilePhoto?: string | null;
+  bio?: string;
+  stats?: {
+    countriesVisited?: number;
+    citiesVisited?: number;
+    trips?: number;
+  };
+  social?: {
+    followers?: number;
+    following?: number;
+  };
+  settings?: {
+    isPrivate?: boolean;
+    notificationsEnabled?: boolean;
+  };
 }
 
 export const createUserProfile = onCall<UserProfileData>(async (request) => {
-  // Enforce authentication
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
   }
@@ -104,11 +108,13 @@ export const createUserProfile = onCall<UserProfileData>(async (request) => {
     phoneNumber,
     countryCode,
     rawPhoneNumber,
-    photoURL,
-    isGoogleSignIn,
+    profilePhoto,
+    bio,
+    stats,
+    social,
+    settings,
   } = request.data;
 
-  // Authorization check
   if (request.auth.uid !== uid) {
     throw new HttpsError(
       "permission-denied",
@@ -117,14 +123,13 @@ export const createUserProfile = onCall<UserProfileData>(async (request) => {
   }
 
   const batch = db.batch();
-
-  // 1. Primary User Document
   const userRef = db.collection("users").doc(uid);
-  const createdAtOrLastLogin = isGoogleSignIn ?
-    {lastLoginAt: new Date().toISOString()} :
-    {createdAt: new Date().toISOString()};
 
+  const now = new Date().toISOString();
+
+  // Construct complete user profile schema
   const userData = {
+    // Identity
     uid,
     username: username || "",
     firstName: firstName || "",
@@ -133,25 +138,49 @@ export const createUserProfile = onCall<UserProfileData>(async (request) => {
     phoneNumber: phoneNumber || null,
     countryCode: countryCode || null,
     rawPhoneNumber: rawPhoneNumber || null,
-    ...(photoURL ? {photoURL} : {}),
-    ...createdAtOrLastLogin,
+
+    // Profile Info
+    profilePhoto: profilePhoto || null,
+    bio: bio || "",
+
+    // Timestamps
+    createdAt: now,
+    updatedAt: now,
+    lastActiveAt: now,
+
+    // Statistics
+    stats: {
+      countriesVisited: stats?.countriesVisited ?? 0,
+      citiesVisited: stats?.citiesVisited ?? 0,
+      trips: stats?.trips ?? 0,
+    },
+
+    // Social Network
+    social: {
+      followers: social?.followers ?? 0,
+      following: social?.following ?? 0,
+    },
+
+    // Preferences & Settings
+    settings: {
+      isPrivate: settings?.isPrivate ?? false,
+      notificationsEnabled: settings?.notificationsEnabled ?? true,
+    },
   };
+
   batch.set(userRef, userData, {merge: true});
 
-  // 2. Email Lookup Entry
   if (email) {
     const normalizedEmail = email.trim().toLowerCase();
     const emailRef = db.collection("emails").doc(normalizedEmail);
     batch.set(emailRef, {uid});
   }
 
-  // 3. Phone Lookup Entry
   if (phoneNumber) {
     const phoneRef = db.collection("phone_numbers").doc(phoneNumber);
     batch.set(phoneRef, {uid});
   }
 
-  // 4. Username Lookup Entry
   if (username) {
     const normalizedUsername = username.trim().toLowerCase();
     const usernameRef = db.collection("usernames").doc(normalizedUsername);

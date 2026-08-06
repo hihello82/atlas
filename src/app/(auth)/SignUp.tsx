@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getAdditionalUserInfo, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useEffect, useState } from 'react';
 import {
@@ -118,57 +118,74 @@ export default function SignUp() {
     doPasswordsMatch;
 
     const handleSignUp = async () => {
-    if (!isFormValid) return;
+        if (!isFormValid) return;
 
-    // Clear pre-existing error messages
-    setUsernameError('');
-    setEmailRegisteredError(false);
+        // Clear pre-existing error messages
+        setUsernameError('');
+        setEmailRegisteredError(false);
 
-    try {
-        const functions = getFunctions();
-        const checkAvailability = httpsCallable<
-        { email: string; username: string },
-        { emailAvailable: boolean; usernameAvailable: boolean }
-        >(functions, 'checkAvailability');
+        try {
+            const functions = getFunctions();
+            const checkAvailability = httpsCallable<
+            { email: string; username: string },
+            { emailAvailable: boolean; usernameAvailable: boolean }
+            >(functions, 'checkAvailability');
 
-        const availability = await checkAvailability({
-        email: email.trim(),
-        username: username.trim(),
-        });
+            const availability = await checkAvailability({
+            email: email.trim(),
+            username: username.trim(),
+            });
 
-        let hasError = false;
+            let hasError = false;
 
-        if (!availability.data.usernameAvailable) {
-        setUsernameError('Please choose a different username.');
-        hasError = true;
+            if (!availability.data.usernameAvailable) {
+            setUsernameError('Please choose a different username.');
+            hasError = true;
+            }
+
+            if (!availability.data.emailAvailable) {
+            setEmailRegisteredError(true);
+            hasError = true;
+            }
+
+            if (hasError) return;
+
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            const createUserProfile = httpsCallable(functions, 'createUserProfile');
+            
+            // Pass the newly added fields
+            await createUserProfile({
+            uid: user.uid,
+            username: username.trim(),
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: user.email,
+            phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
+            countryCode: countryCode || null,
+            rawPhoneNumber: phoneNumber || null,
+            profilePhoto: null,
+            bio: "",
+            stats: {
+                countriesVisited: 0,
+                citiesVisited: 0,
+                trips: 0
+            },
+            social: {
+                followers: 0,
+                following: 0
+            },
+            settings: {
+                isPrivate: false,
+                notificationsEnabled: true
+            }
+            });
+
+            router.replace('/HomeScreen');
+        } catch (error: any) {
+            Alert.alert('Sign-Up Error', error.message);
         }
-
-        if (!availability.data.emailAvailable) {
-        setEmailRegisteredError(true);
-        hasError = true;
-        }
-
-        if (hasError) return;
-
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        const createUserProfile = httpsCallable(functions, 'createUserProfile');
-        await createUserProfile({
-        uid: user.uid,
-        username: username.trim(),
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: user.email,
-        phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
-        countryCode: countryCode || null,
-        rawPhoneNumber: phoneNumber || null,
-        });
-
-        router.replace('/HomeScreen');
-    } catch (error: any) {
-        Alert.alert('Sign-Up Error', error.message);
-    }
     };
 
   const handleAppleLogin = async () => {
@@ -195,27 +212,7 @@ export default function SignUp() {
   };
 
     const handleGoogleLogin = async () => {
-    setUsernameError('');
-    setEmailRegisteredError(false);
-
     try {
-        const targetUsername = username.trim();
-
-        if (targetUsername) {
-        const functions = getFunctions();
-        const checkAvailability = httpsCallable<
-            { username: string },
-            { usernameAvailable: boolean }
-        >(functions, 'checkAvailability');
-
-        const availability = await checkAvailability({ username: targetUsername });
-
-        if (!availability.data.usernameAvailable) {
-            setUsernameError('Please choose a different username.');
-            return;
-        }
-        }
-
         if (Platform.OS === 'android') {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         }
@@ -229,23 +226,40 @@ export default function SignUp() {
         const userCredential = await signInWithCredential(auth, credential);
         const user = userCredential.user;
 
-        const functions = getFunctions();
-        const createUserProfile = httpsCallable(functions, 'createUserProfile');
+        // Check if this is a brand new account or an existing one
+        const additionalUserInfo = getAdditionalUserInfo(userCredential);
 
-        await createUserProfile({
-        uid: user.uid,
-        username: targetUsername || user.email?.split('@')[0],
-        firstName: user.displayName?.split(' ')[0] || '',
-        lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-        email: user.email,
-        photoURL: user.photoURL || '',
-        phoneNumber: phoneNumber ? `${countryCode || ''}${phoneNumber}` : null,
-        countryCode: countryCode || null,
-        rawPhoneNumber: phoneNumber || null,
-        isGoogleSignIn: true,
-        });
+        if (additionalUserInfo?.isNewUser) {
+        // New account: Push to onboarding and pass Google's provided data
 
+            // Cast profile to safely access given_name and family_name as strings
+            const profile = additionalUserInfo?.profile as
+            | { given_name?: string; family_name?: string }
+            | undefined;
+
+            const userFirstName =
+            profile?.given_name || user.displayName?.split(' ')[0] || '';
+            const userLastName =
+            profile?.family_name ||
+            user.displayName?.split(' ').slice(1).join(' ') ||
+            '';
+
+            router.push({
+                pathname: '/UsernameOnboarding',
+                params: {
+                uid: user.uid,
+                email: user.email || '',
+                firstName: userFirstName,
+                lastName: userLastName,
+                photoURL: user.photoURL || '',
+                phoneNumber: phoneNumber || '',
+                countryCode: countryCode || ''
+                }
+            });
+        } else {
+        // Existing account: Send directly to Home Screen
         router.replace('/HomeScreen');
+        }
     } catch (error: any) {
         if (
         error.code !== statusCodes.SIGN_IN_CANCELLED &&

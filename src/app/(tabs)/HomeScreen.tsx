@@ -41,7 +41,7 @@ const MOCK_SESSION = {
 const MOCK_CLOUD_DATA = {
   stats: {
     countries: 23,
-    cities: 47,
+    cities: 0,
     continents: 5,
   },
   recentActivity: [
@@ -310,7 +310,7 @@ export default function HomeScreen() {
 
           <TouchableOpacity 
             style={[styles.statBox, styles.statBoxGreen]}
-            onPress={() => router.push('/Cities')}
+            onPress={() => router.push('../subtabs/Cities')}
           >
             <Text style={[styles.statNumber, styles.textGreen]}>{MOCK_CLOUD_DATA.stats.cities}</Text>
             <Text style={styles.statLabel}>Cities</Text>
