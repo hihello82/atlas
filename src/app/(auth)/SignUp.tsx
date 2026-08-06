@@ -118,12 +118,15 @@ export default function SignUp() {
     if (!isFormValid) return;
 
     try {
+        console.log('hi')
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        console.log('bye')
         const user = userCredential.user;
 
         const functions = getFunctions();
+        console.log('bye')
         const createUserProfile = httpsCallable(functions, 'createUserProfile');
-
+console.log('sdf')
         // Call Cloud Function to perform writes
         await createUserProfile({
         uid: user.uid,

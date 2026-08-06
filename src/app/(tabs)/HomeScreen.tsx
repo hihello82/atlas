@@ -191,24 +191,20 @@ export default function HomeScreen() {
     }));
   };
 
-  const handleCountrySelect = (country: CountryResult) => {
-    setSearchQuery('');
-    
-    // Navigate via Expo Router push using the country's cca3 code
+  const handleCountrySelect = (item: CountryResult) => {
     router.push({
-      pathname: `../(countries)/${country.cca3}`,
+      pathname: '../(countries)/[id]', // adjust to your actual router path
       params: {
-        code: country.cca3,
-        name: country.name.common,
-        flag: country.flag,
-        flagUrl: country.flags?.png || '',
-        region: country.region,
-        capital: country.capital ? country.capital[0] : 'N/A',
-        population: country.population ? country.population.toLocaleString() : 'N/A',
+        code: item.cca3,
+        name: item.name.common,
+        flag: item.flag,
+        flagUrl: item.flags?.png || '',
+        region: item.region,
+        capital: item.capital?.[0] || '',
+        population: String(item.population || 0), // Convert to string for expo-router params
       },
     });
   };
-  console.log('allCountries length:', allCountries.length);
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">

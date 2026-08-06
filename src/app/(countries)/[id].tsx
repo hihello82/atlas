@@ -21,7 +21,14 @@ export default function CountryDetailScreen() {
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Safely extract and format currencies and languages from the API data
+  // Parse population safely from either Firestore details or route params
+  const rawPopulation = details?.population ?? params.population;
+  const parsedPopulation =
+    rawPopulation !== undefined && !isNaN(Number(rawPopulation))
+      ? Number(rawPopulation).toLocaleString()
+      : undefined;
+
+  // Extract currencies and languages matching REST Countries schemas
   const currencies = details?.currencies
     ? Object.values(details.currencies)
         .map((c: any) => (c.symbol ? `${c.name} (${c.symbol})` : c.name))
@@ -32,29 +39,24 @@ export default function CountryDetailScreen() {
     ? Object.values(details.languages).join(', ')
     : undefined;
 
-  const infoRows = details
-  ? [
-      { label: 'Capital', value: params.capital },
-      { label: 'Population', value: Number(params.population).toLocaleString?.() || params.population },
-      { label: 'Currencies', value: currencies },
-      { label: 'Languages', value: languages },
-      { label: 'Subregion', value: details.subregion },
-      { label: 'Area', value: details.area?.kilometers ? `${details.area.kilometers.toLocaleString()} km²` : undefined },
-      { label: 'Government', value: details.government_type },
-      { label: 'Landlocked', value: details.landlocked ? 'Yes' : 'No' },
-      { label: 'Continent', value: details.continents?.join(', ') },
-      { label: 'Demonym', value: details.demonyms?.eng?.m },
-      { label: 'Driving Side', value: details.cars?.driving_side },
-      { label: 'Calling Code', value: details.calling_codes?.map((c: string) => `+${c}`).join(', ') },
-      { label: 'Timezones', value: details.timezones?.join(', ') },
-      { label: 'Internet TLD', value: details.tlds?.join(', ') },
-      { label: 'UN Member', value: details.classification?.un_member ? 'Yes' : 'No' },
-      { label: 'Bordering Countries', value: details.borders?.join(', ') || 'None' },
-      { label: 'Coordinates', value: details.coordinates ? `${details.coordinates.lat}, ${details.coordinates.lng}` : undefined },
-    ].filter((row) => row.value !== undefined && row.value !== '' && row.value !== null)
-  : [];
+  const infoRows = [
+    { label: 'Capital', value: details?.capital ? (Array.isArray(details.capital) ? details.capital.join(', ') : details.capital) : params.capital },
+    { label: 'Population', value: parsedPopulation },
+    { label: 'Currencies', value: currencies },
+    { label: 'Languages', value: languages },
+    { label: 'Subregion', value: details?.subregion },
+    { label: 'Area', value: details?.area ? `${Number(details.area).toLocaleString()} km²` : undefined },
+    { label: 'Landlocked', value: details?.landlocked !== undefined ? (details.landlocked ? 'Yes' : 'No') : undefined },
+    { label: 'Continent', value: Array.isArray(details?.continents) ? details.continents.join(', ') : details?.continents },
+    { label: 'Demonym', value: details?.demonyms?.eng?.m || details?.demonym },
+    { label: 'Driving Side', value: details?.car?.side || details?.cars?.driving_side },
+    { label: 'Calling Code', value: details?.idd?.root ? `${details.idd.root}${details.idd.suffixes?.[0] || ''}` : undefined },
+    { label: 'Timezones', value: Array.isArray(details?.timezones) ? details.timezones.join(', ') : undefined },
+    { label: 'Internet TLD', value: Array.isArray(details?.tld) ? details.tld.join(', ') : undefined },
+    { label: 'UN Member', value: details?.unMember !== undefined ? (details.unMember ? 'Yes' : 'No') : undefined },
+    { label: 'Bordering Countries', value: Array.isArray(details?.borders) && details.borders.length > 0 ? details.borders.join(', ') : undefined },
+  ].filter((row) => row.value !== undefined && row.value !== '' && row.value !== null);
 
-  // Fetch complete details by country code (alpha 3)
   useEffect(() => {
     if (!params.code) return;
 
@@ -64,13 +66,14 @@ export default function CountryDetailScreen() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          const countriesList = docSnap.data().countries || docSnap.data().data || [];
-          
-          // Match country by cca3
+          const rawData = docSnap.data().countries || docSnap.data().data || [];
+          const countriesList = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+
+          // Match country by cca3 or fallback code
           const match = countriesList.find(
             (c: any) => (c.cca3 || c.codes?.alpha_3) === params.code
           );
-          
+
           setDetails(match || null);
         }
       } catch (err) {
