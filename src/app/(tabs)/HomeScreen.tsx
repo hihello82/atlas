@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { auth, db } from '../../../config/firebaseConfig';
 
-// Import your GeoJSON data (or replace with local object)
+// Import your GeoJSON data
 import geoJsonData from '../../../assets/custom.geo.json';
 
 export interface CountryResult {
@@ -32,45 +32,65 @@ export interface CountryResult {
   flags?: { png: string; svg: string; alt?: string };
 }
 
-// Mock session data
-const MOCK_SESSION = {
-  exploredPercentage: 12,
-};
-
-// Mock cloud data
-const MOCK_CLOUD_DATA = {
-  stats: {
-    countries: 23,
-    cities: 0,
-    continents: 5,
-  },
-  recentActivity: [
-    {
-      id: '1',
-      city: 'Tokyo',
-      country: 'Japan',
-      date: 'March 2024',
-      image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
-    }
-  ]
-};
-
 // Target SVG Dimensions
 const MAP_WIDTH = 360;
 const MAP_HEIGHT = 210;
+
+// Date Formatter Helper
+const getOrdinal = (n: number) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+const formatDateRange = (start: any, end: any) => {
+  if (!start) return '';
+  const startDate = start.toDate ? start.toDate() : new Date(start);
+  const endDate = end ? (end.toDate ? end.toDate() : new Date(end)) : null;
+
+  const startMonth = startDate.toLocaleString('en-US', { month: 'long' });
+  const startDay = getOrdinal(startDate.getDate());
+  const startYear = startDate.getFullYear();
+
+  if (!endDate || startDate.getTime() === endDate.getTime()) {
+    return `${startMonth} ${startDay} ${startYear}`;
+  }
+
+  const endMonth = endDate.toLocaleString('en-US', { month: 'long' });
+  const endDay = getOrdinal(endDate.getDate());
+  const endYear = endDate.getFullYear();
+
+  if (startYear !== endYear) {
+    return `${startMonth} ${startDay} ${startYear} - ${endMonth} ${endDay} ${endYear}`;
+  } else if (startMonth !== endMonth) {
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay} ${startYear}`;
+  } else {
+    return `${startMonth} ${startDay} - ${endDay} ${startYear}`;
+  }
+};
 
 export default function HomeScreen() {
   const router = useRouter();
 
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // Dynamic State variables
+  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
+  const [exploredPercentage, setExploredPercentage] = useState<string>("0.00");
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+
+  // Search variables
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allCountries, setAllCountries] = useState<CountryResult[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
+          // 1. Fetch User Profile
           const userDocRef = doc(db, 'users', user.uid);
           const userDocSnap = await getDoc(userDocRef);
-
           if (userDocSnap.exists()) {
             setUserProfile(userDocSnap.data());
           } else {
@@ -79,22 +99,87 @@ export default function HomeScreen() {
               lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
             });
           }
+
+          // 2. Compute 6 months ago threshold
+          const sixMonthsAgo = new Date();
+          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+          const activities: any[] = [];
+          const colors: Record<string, string> = {};
+          let visitedCount = 0;
+
+          // 3. Fetch Visited Countries
+          const countriesRef = collection(db, 'users', user.uid, 'countries');
+          const countriesSnap = await getDocs(countriesRef);
+          
+          countriesSnap.forEach(doc => {
+            const data = doc.data();
+            const cca3 = data.countryCode || doc.id;
+            
+            // Mark country as visited with color
+            colors[cca3] = '#3498db'; 
+            visitedCount++;
+
+            // Check for recent activity in countries
+            const recentDate = data.recentArrival || data.firstVisited || data.arrivalDate;
+            const endDate = data.lastVisited || data.departureDate;
+            
+            if (recentDate) {
+              const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
+              if (jsDate >= sixMonthsAgo) {
+                activities.push({
+                  id: `country-${doc.id}`,
+                  title: `Visited ${data.countryName || doc.id}`,
+                  location: data.countryName || doc.id,
+                  dateObj: jsDate,
+                  dateString: formatDateRange(recentDate, endDate),
+                  image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80', // Default placeholder
+                });
+              }
+            }
+          });
+
+          setCountryColors(colors);
+          setExploredPercentage(((visitedCount / 195) * 100).toFixed(2));
+
+          // 4. Fetch Trips
+          const tripsRef = collection(db, 'users', user.uid, 'trips');
+          const tripsSnap = await getDocs(tripsRef);
+
+          tripsSnap.forEach(doc => {
+            const data = doc.data();
+            const startDate = data.startDate;
+            const endDate = data.endDate;
+
+            if (startDate) {
+              const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
+              if (jsDate >= sixMonthsAgo) {
+                activities.push({
+                  id: `trip-${doc.id}`,
+                  title: data.title || 'Trip',
+                  location: data.countries?.join(', ') || 'Multiple Locations',
+                  dateObj: jsDate,
+                  dateString: formatDateRange(startDate, endDate),
+                  image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
+                });
+              }
+            }
+          });
+
+          // Sort activities by most recent
+          activities.sort((a, b) => b.dateObj - a.dateObj);
+          setRecentActivities(activities);
+
         } catch (err) {
-          console.error('Error fetching user profile:', err);
+          console.error('Error fetching user data:', err);
         }
       }
     });
 
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
 
-  // State for map colors & search query
-  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
-  const [searchQuery, setSearchQuery] = useState('');
-  const [allCountries, setAllCountries] = useState<CountryResult[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch ALL countries on component mount
+  // Fetch ALL countries on component mount for Search functionality
   useEffect(() => {
     const fetchAllCountries = async () => {
       try {
@@ -130,8 +215,6 @@ export default function HomeScreen() {
 
           parsedCountries.sort((a, b) => a.name.common.localeCompare(b.name.common));
           setAllCountries(parsedCountries);
-        } else {
-          console.error('No document found at app_data/countries');
         }
       } catch (err) {
         console.error('Failed to fetch countries from Firestore:', err);
@@ -146,17 +229,16 @@ export default function HomeScreen() {
   // Filter countries in real-time based on searchQuery
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    
     const query = searchQuery.toLowerCase().trim();
-
     return allCountries
       .filter((country) => 
         country.name.common.toLowerCase().includes(query) ||
         country.cca3.toLowerCase().includes(query) ||
         country.cca2.toLowerCase().includes(query)
       )
-      .slice(0, 7); // Cap the list length at 7 before passing to rendering
+      .slice(0, 7);
   }, [searchQuery, allCountries]);
+
   // Convert GeoJSON Features to SVG Paths
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
@@ -169,11 +251,7 @@ export default function HomeScreen() {
     const pathGenerator = geoPath().projection(projection);
 
     return geoJsonData.features.map((feature: any, index: number) => {
-      const rawId =
-        feature.properties?.iso_a3 ||
-        feature.properties?.ISO_A3 ||
-        feature.properties?.name;
-
+      const rawId = feature.properties?.iso_a3 || feature.properties?.ISO_A3 || feature.properties?.name;
       const id = rawId && rawId !== '-99' ? String(rawId) : `region-${index}`;
 
       return {
@@ -183,16 +261,9 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const toggleCountryColor = (regionId: string) => {
-    setCountryColors(prev => ({
-      ...prev,
-      [regionId]: prev[regionId] === '#3498db' ? '#d3d3d3' : '#3498db',
-    }));
-  };
-
   const handleCountrySelect = (item: CountryResult) => {
     router.push({
-      pathname: '../(countries)/[id]', // adjust to your actual router path
+      pathname: '../(countries)/[id]',
       params: {
         code: item.cca3,
         name: item.name.common,
@@ -200,17 +271,17 @@ export default function HomeScreen() {
         flagUrl: item.flags?.png || '',
         region: item.region,
         capital: item.capital?.[0] || '',
-        population: String(item.population || 0), // Convert to string for expo-router params
+        population: String(item.population || 0),
       },
     });
   };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
         {/* HEADER */}
         <View style={styles.headerContainer}>
-          {/* 1. Header Name */}
           <View>
             <Text style={styles.welcomeText}>Welcome back,</Text>
             <Text style={styles.nameText}>
@@ -227,28 +298,28 @@ export default function HomeScreen() {
           </View>
         </View>
 
-          <View style={[styles.searchWrapper, { zIndex: 1000, elevation: 1000 }]}>
-            {/* Your existing Search TextInput/Bar */}
-            {/* SEARCH BAR */}
-            <View style={styles.searchSectionContainer}>
-              <View style={styles.searchBarContainer}>
-                <Ionicons name="search-outline" size={20} color="#7f8c8d" style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search countries..."
-                  placeholderTextColor="#95a5a6"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {loading && <ActivityIndicator size="small" color="#007aff" style={styles.spinner} />}
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                    <Ionicons name="close-circle" size={18} color="#95a5a6" />
-                  </TouchableOpacity>
-                )}
-              </View>
+        {/* SEARCH BAR */}
+        <View style={[styles.searchWrapper, { zIndex: 1000, elevation: 1000 }]}>
+          <View style={styles.searchSectionContainer}>
+            <View style={styles.searchBarContainer}>
+              <Ionicons name="search-outline" size={20} color="#7f8c8d" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search countries..."
+                placeholderTextColor="#95a5a6"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {loading && <ActivityIndicator size="small" color="#007aff" style={styles.spinner} />}
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                  <Ionicons name="close-circle" size={18} color="#95a5a6" />
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* Search Results Dropdown */}
             {(searchQuery.length > 0 && filteredResults.length > 0) && (
               <View style={styles.searchResultsContainer}>
@@ -277,11 +348,14 @@ export default function HomeScreen() {
 
         {/* INTERACTIVE MAP CONTAINER */}
         <View style={styles.mapCard}>
-          <View style={styles.mapWrapper}>
-            <Svg height="100%" width="100%" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}>
+          <TouchableOpacity 
+            style={styles.mapWrapper} 
+            activeOpacity={0.8}
+            onPress={() => router.push('/MapScreen')}
+          >
+            <Svg height="100%" width="100%" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} pointerEvents="none">
               {formattedRegions.map((region) => {
                 if (!region.path) return null;
-
                 return (
                   <Path
                     key={region.id}
@@ -289,17 +363,16 @@ export default function HomeScreen() {
                     fill={countryColors[region.id] || '#d3d3d3'}
                     stroke="#ffffff"
                     strokeWidth="0.5"
-                    onPress={() => toggleCountryColor(region.id)}
                   />
                 );
               })}
             </Svg>
-          </View>
+          </TouchableOpacity>
 
           {/* % Explored Badge */}
           <View style={styles.exploredBadge}>
             <View style={styles.badgeDot} />
-            <Text style={styles.badgeText}>{MOCK_SESSION.exploredPercentage}% Explored</Text>
+            <Text style={styles.badgeText}>{exploredPercentage}% Explored</Text>
           </View>
         </View>
 
@@ -323,24 +396,34 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <View style={[styles.statBox, styles.statBoxWhite]}>
-            <Text style={styles.statNumber}>{MOCK_CLOUD_DATA.stats.continents}</Text>
+            <Text style={styles.statNumber}>
+                {userProfile?.stats?.continentsVisited ?? 0}
+            </Text>
             <Text style={styles.statLabel}>Continents</Text>
           </View>
         </View>
 
         {/* RECENT ACTIVITY */}
         <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {MOCK_CLOUD_DATA.recentActivity.map((activity) => (
-          <TouchableOpacity key={activity.id} style={styles.activityCard}>
-            <Image source={{ uri: activity.image }} style={styles.activityImage} />
-            <View style={styles.activityInfo}>
-              <View style={styles.activityLocation}>
-                <Text style={styles.countryText}>🇯🇵 {activity.country}</Text>
+        
+        {recentActivities.length > 0 ? (
+          recentActivities.map((activity) => (
+            <TouchableOpacity key={activity.id} style={styles.activityCard}>
+              <Image source={{ uri: activity.image }} style={styles.activityImage} />
+              <View style={styles.activityInfo}>
+                <View style={styles.activityLocation}>
+                  <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
+                  <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
+                </View>
+                <Text style={styles.dateText}>{activity.dateString}</Text>
               </View>
-              <Text style={styles.dateText}>{activity.date}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={styles.emptyActivityContainer}>
+            <Text style={styles.emptyActivityText}>No activity within the past 6 months</Text>
+          </View>
+        )}
 
       </ScrollView>
     </SafeAreaView>
@@ -607,4 +690,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
   },
+  emptyActivityContainer: {
+    paddingVertical: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  emptyActivityText: {
+    fontSize: 15,
+    color: '#95a5a6',
+    fontWeight: '500',
+  }
 });

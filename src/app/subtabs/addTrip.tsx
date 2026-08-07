@@ -1,10 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, increment, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Image,
     Modal,
     ScrollView,
     StyleSheet,
@@ -14,6 +19,8 @@ import {
     View,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../../config/firebaseConfig';
 
@@ -37,10 +44,15 @@ export default function AddTrip() {
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
-  // Dropdown Modal State (Replaces RNCPicker)
+  // Dropdown Modal State
   const [existingTrips, setExistingTrips] = useState<any[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string>('new');
   const [showTripPicker, setShowTripPicker] = useState(false);
+
+  // Photo State
+  const [photos, setPhotos] = useState<{ key: string; uri: string }[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     const fetchTrips = async () => {
@@ -57,7 +69,105 @@ export default function AddTrip() {
     fetchTrips();
   }, [user]);
 
-  // Handle range selection on the calendar
+  // Image Picking and Compression
+  const handleSelectPhotos = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 1, // Start with high quality, we will compress manually
+    });
+
+    if (!result.canceled && result.assets) {
+      setLoading(true);
+      const processedPhotos: { key: string; uri: string }[] = [];
+
+      for (const asset of result.assets) {
+        // Determine resizing to make longest side max 1080px
+        let resizeAction = {};
+        if (asset.width > asset.height) {
+          resizeAction = { width: Math.min(1080, asset.width) };
+        } else {
+          resizeAction = { height: Math.min(1080, asset.height) };
+        }
+
+        let quality = 0.8;
+        let manipResult = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: resizeAction }],
+          { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        // Dynamically reduce quality until file is under 300kb (307,200 bytes)
+        let fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
+        while (fileInfo.exists && fileInfo.size && fileInfo.size > 307200 && quality > 0.1) {
+          quality -= 0.15;
+          manipResult = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: resizeAction }],
+            { compress: Math.max(0.1, quality), format: ImageManipulator.SaveFormat.JPEG }
+          );
+          fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
+        }
+
+        processedPhotos.push({
+          key: `photo-${Date.now()}-${Math.random()}`,
+          uri: manipResult.uri,
+        });
+      }
+
+      setPhotos((prev) => [...prev, ...processedPhotos]);
+      setLoading(false);
+    }
+  };
+
+  const removePhoto = (keyToRemove: string) => {
+    setPhotos((prev) => prev.filter((p) => p.key !== keyToRemove));
+  };
+
+  // Upload Logic
+  const uploadPhotosToStorage = async (): Promise<string[]> => {
+    if (!user || photos.length === 0) return [];
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    const storage = getStorage();
+    const downloadURLs: string[] = [];
+    const totalCount = photos.length;
+
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      const response = await fetch(photo.uri);
+      const blob = await response.blob();
+      
+      // Filename format: CountryName_Timestamp_Index.jpg
+      const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `${safeName}_${Date.now()}_${i}.jpg`;
+      const storageRef = ref(storage, `userUploads/${user.uid}/${fileName}`);
+
+      const uploadTask = uploadBytesResumable(storageRef, blob);
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const currentFileProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
+            setUploadProgress(overallProgress);
+          },
+          (error) => reject(error),
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            downloadURLs.push(url);
+            resolve();
+          }
+        );
+      });
+    }
+
+    setIsUploading(false);
+    return downloadURLs;
+  };
+
   const handleDayPress = (day: { dateString: string }) => {
     const dateStr = day.dateString;
     if (!tempStartDate || (tempStartDate && tempEndDate)) {
@@ -72,18 +182,12 @@ export default function AddTrip() {
     }
   };
 
-  // Generate marked dates for range highlighting
   const getMarkedDates = () => {
     const marked: any = {};
     if (!tempStartDate) return marked;
 
     if (tempStartDate && !tempEndDate) {
-      marked[tempStartDate] = {
-        startingDay: true,
-        endingDay: true,
-        color: '#007aff',
-        textColor: '#ffffff',
-      };
+      marked[tempStartDate] = { startingDay: true, endingDay: true, color: '#007aff', textColor: '#ffffff' };
       return marked;
     }
 
@@ -101,7 +205,6 @@ export default function AddTrip() {
         color: isStart || isEnd ? '#007aff' : '#e0f2fe',
         textColor: isStart || isEnd ? '#ffffff' : '#007aff',
       };
-
       curr.setDate(curr.getDate() + 1);
     }
     return marked;
@@ -112,6 +215,11 @@ export default function AddTrip() {
     setLoading(true);
 
     try {
+      // 1. Upload Photos first
+      const uploadedImageURLs = await uploadPhotosToStorage();
+      const coverPhotoURL = uploadedImageURLs.length > 0 ? uploadedImageURLs[0] : null;
+
+      // 2. Save Data to Firestore
       const uid = user.uid;
       const countryRef = doc(db, 'users', uid, 'countries', code);
       const countrySnap = await getDoc(countryRef);
@@ -126,15 +234,21 @@ export default function AddTrip() {
           visitCount: increment(1),
           updatedAt: serverTimestamp(),
           firstVisited: existingData.firstVisited || arrivalTimestamp,
+          recentArrival: arrivalTimestamp,
           lastVisited: departureTimestamp || existingData.lastVisited || arrivalTimestamp,
+          photos: [...(existingData.photos || []), ...uploadedImageURLs],
+          coverPhoto: existingData.coverPhoto || coverPhotoURL, // Set if not exists
         });
       } else {
         await setDoc(countryRef, {
           countryCode: code,
           countryName: name,
           firstVisited: arrivalTimestamp,
+          recentArrival: arrivalTimestamp,
           lastVisited: arrivalTimestamp || departureTimestamp,
           visitCount: 1,
+          photos: uploadedImageURLs,
+          coverPhoto: coverPhotoURL,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -154,7 +268,8 @@ export default function AddTrip() {
           endDate: departureTimestamp,
           countries: [code],
           cities: [],
-          coverPhoto: null,
+          photos: uploadedImageURLs,
+          coverPhoto: coverPhotoURL,
         });
       }
 
@@ -169,10 +284,11 @@ export default function AddTrip() {
       }
 
       setLoading(false);
-      router.back();
+      router.replace('/HomeScreen');
     } catch (err) {
       console.error('Error saving trip:', err);
       setLoading(false);
+      setIsUploading(false);
     }
   };
 
@@ -181,243 +297,229 @@ export default function AddTrip() {
       ? '-- Create New Trip --'
       : existingTrips.find((t) => t.id === selectedTripId)?.title || '-- Select Trip --';
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.headerTitle}>Record Visit: {name}</Text>
-
-        {/* Custom Select Trip Dropdown */}
-        <Text style={styles.label}>Add to Trip</Text>
-        <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
-          <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
-          <Ionicons name="chevron-down" size={20} color="#64748b" />
-        </TouchableOpacity>
-
-        {selectedTripId === 'new' && (
-          <>
-            <Text style={styles.label}>New Trip Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Summer 2026 Backpacking"
-              value={tripName}
-              onChangeText={setTripName}
-            />
-
-            <Text style={styles.label}>Trip Notes</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Any memories or notes?"
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-            />
-          </>
-        )}
-
-        {/* Calendar Range Selector Field */}
-        <Text style={styles.label}>Dates Visited</Text>
+  const renderPhotoItem = ({ item, drag, isActive }: any) => {
+    return (
+      <ScaleDecorator>
         <TouchableOpacity
-          style={styles.dateSelector}
-          onPress={() => {
-            setTempStartDate(startDate);
-            setTempEndDate(endDate);
-            setShowDatePicker(true);
-          }}
+          onLongPress={drag}
+          disabled={isActive}
+          style={[styles.photoWrapper, { opacity: isActive ? 0.7 : 1 }]}
         >
-          <Ionicons name="calendar-outline" size={20} color="#007aff" />
-          <Text style={styles.dateSelectorText}>
-            {startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates'}
-          </Text>
+          <Image source={{ uri: item.uri }} style={styles.photoThumbnail} />
+          <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(item.key)}>
+            <Ionicons name="close-circle" size={24} color="#ef4444" />
+          </TouchableOpacity>
         </TouchableOpacity>
+      </ScaleDecorator>
+    );
+  };
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Visit</Text>}
-        </TouchableOpacity>
-      </ScrollView>
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Trip Dropdown Modal */}
-      <Modal visible={showTripPicker} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTripPicker(false)}>
-          <View style={styles.dropdownModalContent}>
-            <TouchableOpacity
-              style={styles.dropdownOption}
-              onPress={() => {
-                setSelectedTripId('new');
-                setShowTripPicker(false);
-              }}
-            >
-              <Text style={styles.dropdownOptionText}>-- Create New Trip --</Text>
-            </TouchableOpacity>
-            {existingTrips.map((trip) => (
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.headerTitle}>Record Visit: {name}</Text>
+
+          {/* Add Photos Section */}
+          <Text style={styles.label}>Trip Photos</Text>
+          <Text style={styles.subText}>Drag and drop to reorder. The first photo will be used as the cover photo for the country.</Text>
+          
+          <TouchableOpacity style={styles.photoAddButton} onPress={handleSelectPhotos} disabled={loading}>
+            <Ionicons name="camera-outline" size={24} color="#007aff" />
+            <Text style={styles.photoAddText}>Select Photos</Text>
+          </TouchableOpacity>
+
+          {photos.length > 0 && (
+            <View style={styles.draggableListContainer}>
+              <DraggableFlatList
+                horizontal
+                data={photos}
+                onDragEnd={({ data }) => setPhotos(data)}
+                keyExtractor={(item) => item.key}
+                renderItem={renderPhotoItem}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 4 }}
+              />
+            </View>
+          )}
+
+          {/* Dropdown Selector */}
+          <Text style={styles.label}>Add to Trip</Text>
+          <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
+            <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
+            <Ionicons name="chevron-down" size={20} color="#64748b" />
+          </TouchableOpacity>
+
+          {selectedTripId === 'new' && (
+            <>
+              <Text style={styles.label}>New Trip Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Summer 2026 Backpacking"
+                value={tripName}
+                onChangeText={setTripName}
+              />
+
+              <Text style={styles.label}>Trip Notes</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Any memories or notes?"
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+              />
+            </>
+          )}
+
+          <Text style={styles.label}>Dates Visited</Text>
+          <TouchableOpacity
+            style={styles.dateSelector}
+            onPress={() => {
+              setTempStartDate(startDate);
+              setTempEndDate(endDate);
+              setShowDatePicker(true);
+            }}
+          >
+            <Ionicons name="calendar-outline" size={20} color="#007aff" />
+            <Text style={styles.dateSelectorText}>
+              {startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Upload Progress Bar */}
+          {isUploading && (
+            <View style={styles.progressContainer}>
+              <Text style={styles.progressText}>Photos are uploading... {Math.round(uploadProgress)}%</Text>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${uploadProgress}%` }]} />
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading || isUploading}>
+            {(loading || isUploading) ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Visit</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Modals for Trips and Date Pickers */}
+        <Modal visible={showTripPicker} transparent animationType="fade">
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTripPicker(false)}>
+            <View style={styles.dropdownModalContent}>
               <TouchableOpacity
-                key={trip.id}
                 style={styles.dropdownOption}
                 onPress={() => {
-                  setSelectedTripId(trip.id);
+                  setSelectedTripId('new');
                   setShowTripPicker(false);
                 }}
               >
-                <Text style={styles.dropdownOptionText}>{trip.title}</Text>
+                <Text style={styles.dropdownOptionText}>-- Create New Trip --</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+              {existingTrips.map((trip) => (
+                <TouchableOpacity
+                  key={trip.id}
+                  style={styles.dropdownOption}
+                  onPress={() => {
+                    setSelectedTripId(trip.id);
+                    setShowTripPicker(false);
+                  }}
+                >
+                  <Text style={styles.dropdownOptionText}>{trip.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
-      {/* Range Date Picker Modal */}
-      <Modal visible={showDatePicker} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.calendarModalContent}>
-            {/* Header displaying From / To */}
-            <View style={styles.dateHeader}>
-              <View style={styles.dateHeaderBox}>
-                <Text style={styles.dateHeaderLabel}>From</Text>
-                <Text style={styles.dateHeaderValue}>{tempStartDate || 'Select'}</Text>
+        <Modal visible={showDatePicker} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.calendarModalContent}>
+              <View style={styles.dateHeader}>
+                <View style={styles.dateHeaderBox}>
+                  <Text style={styles.dateHeaderLabel}>From</Text>
+                  <Text style={styles.dateHeaderValue}>{tempStartDate || 'Select'}</Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.dateHeaderBox}>
+                  <Text style={styles.dateHeaderLabel}>To</Text>
+                  <Text style={styles.dateHeaderValue}>{tempEndDate || 'Select'}</Text>
+                </View>
               </View>
-              <View style={styles.divider} />
-              <View style={styles.dateHeaderBox}>
-                <Text style={styles.dateHeaderLabel}>To</Text>
-                <Text style={styles.dateHeaderValue}>{tempEndDate || 'Select'}</Text>
+
+              <Calendar
+                markingType={'period'}
+                markedDates={getMarkedDates()}
+                onDayPress={handleDayPress}
+                theme={{ todayTextColor: '#007aff', arrowColor: '#007aff' }}
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.applyButton]}
+                  onPress={() => {
+                    setStartDate(tempStartDate);
+                    setEndDate(tempEndDate);
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text style={styles.applyButtonText}>Apply</Text>
+                </TouchableOpacity>
               </View>
             </View>
-
-            {/* Calendar */}
-            <Calendar
-              markingType={'period'}
-              markedDates={getMarkedDates()}
-              onDayPress={handleDayPress}
-              theme={{
-                todayTextColor: '#007aff',
-                arrowColor: '#007aff',
-              }}
-            />
-
-            {/* Cancel & Apply Actions */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowDatePicker(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.applyButton]}
-                onPress={() => {
-                  setStartDate(tempStartDate);
-                  setEndDate(tempEndDate);
-                  setShowDatePicker(false);
-                }}
-              >
-                <Text style={styles.applyButtonText}>Apply</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        </Modal>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
   content: { padding: 20 },
-  header: {
-    width: '100%',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#1a1a24' },
-  label: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 8, marginTop: 16 },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-  },
+  header: { width: '100%', paddingHorizontal: 20, paddingTop: 8, alignItems: 'flex-start' },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 12, color: '#1a1a24' },
+  label: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 4, marginTop: 16 },
+  subText: { fontSize: 13, color: '#64748b', marginBottom: 12 },
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16 },
   textArea: { height: 100, textAlignVertical: 'top' },
-  dropdownSelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    padding: 12,
-  },
+  
+  photoAddButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0f2fe', paddingVertical: 12, borderRadius: 8, marginBottom: 12 },
+  photoAddText: { fontSize: 16, color: '#007aff', fontWeight: '600', marginLeft: 8 },
+  draggableListContainer: { height: 130 },
+  photoWrapper: { width: 110, height: 110, marginRight: 12, borderRadius: 12, overflow: 'hidden', position: 'relative' },
+  photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
+  removePhotoBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
+
+  progressContainer: { marginTop: 24 },
+  progressText: { fontSize: 14, color: '#007aff', fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  progressBarBg: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#007aff' },
+
+  dropdownSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12 },
   dropdownText: { fontSize: 16, color: '#1e293b' },
-  dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    padding: 12,
-    gap: 10,
-  },
+  dateSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, gap: 10 },
   dateSelectorText: { fontSize: 16, color: '#1e293b' },
-  saveButton: {
-    backgroundColor: '#007aff',
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    marginTop: 32,
-  },
+  saveButton: { backgroundColor: '#007aff', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 32 },
   saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  dropdownModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    width: '90%',
-    padding: 8,
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  dropdownModalContent: { backgroundColor: '#fff', borderRadius: 12, width: '90%', padding: 8 },
   dropdownOption: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   dropdownOptionText: { fontSize: 16, color: '#1e293b' },
-  calendarModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    width: '100%',
-    padding: 16,
-  },
-  dateHeader: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 12,
-    marginBottom: 12,
-  },
+  calendarModalContent: { backgroundColor: '#fff', borderRadius: 20, width: '100%', padding: 16 },
+  dateHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingBottom: 12, marginBottom: 12 },
   dateHeaderBox: { flex: 1, alignItems: 'center' },
   dateHeaderLabel: { fontSize: 12, color: '#64748b' },
   dateHeaderValue: { fontSize: 16, fontWeight: 'bold', color: '#1e293b', marginTop: 2 },
