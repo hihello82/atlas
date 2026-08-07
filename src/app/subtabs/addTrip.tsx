@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, increment, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
-import { getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
+import { deleteObject, getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -50,7 +50,7 @@ export default function AddTrip() {
   const [showTripPicker, setShowTripPicker] = useState(false);
 
   // Photo State
-  const [photos, setPhotos] = useState<{ key: string; uri: string }[]>([]);
+  const [photos, setPhotos] = useState<{ key: string; uri: string; caption: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -72,14 +72,14 @@ export default function AddTrip() {
   // Image Picking and Compression
   const handleSelectPhotos = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 1, // Start with high quality, we will compress manually
     });
 
     if (!result.canceled && result.assets) {
       setLoading(true);
-      const processedPhotos: { key: string; uri: string }[] = [];
+      const processedPhotos: { key: string; uri: string; caption: string }[] = [];
 
       for (const asset of result.assets) {
         // Determine resizing to make longest side max 1080px
@@ -112,6 +112,7 @@ export default function AddTrip() {
         processedPhotos.push({
           key: `photo-${Date.now()}-${Math.random()}`,
           uri: manipResult.uri,
+          caption: '',
         });
       }
 
@@ -120,52 +121,67 @@ export default function AddTrip() {
     }
   };
 
+  const handleCaptionChange = (key: string, caption: string) => {
+    setPhotos((prev) =>
+      prev.map((photo) => (photo.key === key ? { ...photo, caption } : photo))
+    );
+  };
+
   const removePhoto = (keyToRemove: string) => {
     setPhotos((prev) => prev.filter((p) => p.key !== keyToRemove));
   };
 
   // Upload Logic
-  const uploadPhotosToStorage = async (): Promise<string[]> => {
+  const uploadPhotosToStorage = async (): Promise<{ url: string; caption: string }[]> => {
     if (!user || photos.length === 0) return [];
     
     setIsUploading(true);
     setUploadProgress(0);
     const storage = getStorage();
-    const downloadURLs: string[] = [];
+    const uploadedResults: { url: string; caption: string }[] = [];
+    const createdRefs: any[] = [];
     const totalCount = photos.length;
 
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
-      const response = await fetch(photo.uri);
-      const blob = await response.blob();
-      
-      // Filename format: CountryName_Timestamp_Index.jpg
-      const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
-      const fileName = `${safeName}_${Date.now()}_${i}.jpg`;
-      const storageRef = ref(storage, `userUploads/${user.uid}/${fileName}`);
+    try {
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const response = await fetch(photo.uri);
+        const blob = await response.blob();
+        
+        // Filename format: CountryName_Timestamp_Index.jpg
+        const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
+        const fileName = `${safeName}_${Date.now()}_${i}.jpg`;
+        const storageRef = ref(storage, `userUploads/${user.uid}/${fileName}`);
+        createdRefs.push(storageRef);
 
-      const uploadTask = uploadBytesResumable(storageRef, blob);
+        const uploadTask = uploadBytesResumable(storageRef, blob);
 
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const currentFileProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
-            setUploadProgress(overallProgress);
-          },
-          (error) => reject(error),
-          async () => {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            downloadURLs.push(url);
-            resolve();
-          }
-        );
-      });
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const currentFileProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
+              setUploadProgress(overallProgress);
+            },
+            (error) => reject(error),
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              uploadedResults.push({ url, caption: photo.caption });
+              resolve();
+            }
+          );
+        });
+      }
+
+      setIsUploading(false);
+      return uploadedResults;
+    } catch (error) {
+      // Cleanup uploaded photos if uploading process fails
+      await Promise.all(createdRefs.map((storageRef) => deleteObject(storageRef).catch(() => {})));
+      setIsUploading(false);
+      throw error;
     }
-
-    setIsUploading(false);
-    return downloadURLs;
   };
 
   const handleDayPress = (day: { dateString: string }) => {
@@ -214,10 +230,11 @@ export default function AddTrip() {
     if (!user || !code) return;
     setLoading(true);
 
+    let uploadedPhotosData: { url: string; caption: string }[] = [];
     try {
       // 1. Upload Photos first
-      const uploadedImageURLs = await uploadPhotosToStorage();
-      const coverPhotoURL = uploadedImageURLs.length > 0 ? uploadedImageURLs[0] : null;
+      uploadedPhotosData = await uploadPhotosToStorage();
+      const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
 
       // 2. Save Data to Firestore
       const uid = user.uid;
@@ -228,6 +245,9 @@ export default function AddTrip() {
       const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
       let targetTripId = selectedTripId;
 
+        // Target the user's main profile document
+      const userDocRef = doc(db, 'users', uid);
+
       if (countrySnap.exists()) {
         const existingData = countrySnap.data();
         await updateDoc(countryRef, {
@@ -236,8 +256,8 @@ export default function AddTrip() {
           firstVisited: existingData.firstVisited || arrivalTimestamp,
           recentArrival: arrivalTimestamp,
           lastVisited: departureTimestamp || existingData.lastVisited || arrivalTimestamp,
-          photos: [...(existingData.photos || []), ...uploadedImageURLs],
-          coverPhoto: existingData.coverPhoto || coverPhotoURL, // Set if not exists
+          photos: [...(existingData.photos || []), ...uploadedPhotosData],
+          coverPhoto: existingData.coverPhoto || coverPhotoURL,
         });
       } else {
         await setDoc(countryRef, {
@@ -247,14 +267,16 @@ export default function AddTrip() {
           recentArrival: arrivalTimestamp,
           lastVisited: arrivalTimestamp || departureTimestamp,
           visitCount: 1,
-          photos: uploadedImageURLs,
+          photos: uploadedPhotosData,
           coverPhoto: coverPhotoURL,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
 
-        const statsRef = doc(db, 'users', `${uid}/stats`);
-        await setDoc(statsRef, { countriesVisited: increment(1) }, { merge: true });
+        // Increment countriesVisited inside the 'stats' map on the user document
+        await updateDoc(userDocRef, {
+          'stats.countriesVisited': increment(1),
+        });
       }
 
       if (selectedTripId === 'new' && tripName.trim() !== '') {
@@ -268,8 +290,13 @@ export default function AddTrip() {
           endDate: departureTimestamp,
           countries: [code],
           cities: [],
-          photos: uploadedImageURLs,
+          photos: uploadedPhotosData,
           coverPhoto: coverPhotoURL,
+        });
+
+        // Increment trips inside the 'stats' map on the user document
+        await updateDoc(userDocRef, {
+          'stats.trips': increment(1),
         });
       }
 
@@ -287,6 +314,16 @@ export default function AddTrip() {
       router.replace('/HomeScreen');
     } catch (err) {
       console.error('Error saving trip:', err);
+      // Clean up uploaded files in Cloud Storage if Firestore fails
+      if (uploadedPhotosData.length > 0) {
+        const storage = getStorage();
+        await Promise.all(
+          uploadedPhotosData.map((p) => {
+            const photoRef = ref(storage, p.url);
+            return deleteObject(photoRef).catch(() => {});
+          })
+        );
+      }
       setLoading(false);
       setIsUploading(false);
     }
@@ -297,22 +334,31 @@ export default function AddTrip() {
       ? '-- Create New Trip --'
       : existingTrips.find((t) => t.id === selectedTripId)?.title || '-- Select Trip --';
 
-  const renderPhotoItem = ({ item, drag, isActive }: any) => {
-    return (
-      <ScaleDecorator>
-        <TouchableOpacity
-          onLongPress={drag}
-          disabled={isActive}
-          style={[styles.photoWrapper, { opacity: isActive ? 0.7 : 1 }]}
-        >
-          <Image source={{ uri: item.uri }} style={styles.photoThumbnail} />
-          <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(item.key)}>
-            <Ionicons name="close-circle" size={24} color="#ef4444" />
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </ScaleDecorator>
-    );
-  };
+    const renderPhotoItem = ({ item, drag, isActive }: any) => {
+        return (
+        <ScaleDecorator>
+            <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            style={[styles.photoWrapper, { opacity: isActive ? 0.7 : 1 }]}
+            >
+            <View style={styles.imageContainer}>
+                <Image source={{ uri: item.uri }} style={styles.photoThumbnail} />
+                <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(item.key)}>
+                <Ionicons name="close-circle" size={24} color="#ef4444" />
+                </TouchableOpacity>
+            </View>
+            <TextInput
+                style={styles.captionInput}
+                placeholder="Add caption..."
+                placeholderTextColor="#94a3b8"
+                value={item.caption}
+                onChangeText={(text) => handleCaptionChange(item.key, text)}
+            />
+            </TouchableOpacity>
+        </ScaleDecorator>
+        );
+    };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -498,10 +544,25 @@ const styles = StyleSheet.create({
   
   photoAddButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0f2fe', paddingVertical: 12, borderRadius: 8, marginBottom: 12 },
   photoAddText: { fontSize: 16, color: '#007aff', fontWeight: '600', marginLeft: 8 },
-  draggableListContainer: { height: 130 },
-  photoWrapper: { width: 110, height: 110, marginRight: 12, borderRadius: 12, overflow: 'hidden', position: 'relative' },
+  draggableListContainer: { height: 180 },
+  photoWrapper: { width: 130, marginRight: 12 },
+  imageContainer: { width: 130, height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative' },
   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
   removePhotoBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
+  captionInput: {
+    marginTop: 6,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 12,
+    color: '#1e293b',
+  },
+//   photoWrapper: { width: 110, height: 110, marginRight: 12, borderRadius: 12, overflow: 'hidden', position: 'relative' },
+//   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
+//   removePhotoBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
 
   progressContainer: { marginTop: 24 },
   progressText: { fontSize: 14, color: '#007aff', fontWeight: '600', marginBottom: 8, textAlign: 'center' },

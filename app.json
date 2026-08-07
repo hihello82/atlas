@@ -57,7 +57,8 @@
       "expo-secure-store",
       "expo-apple-authentication",
       "@react-native-firebase/auth/app.plugin.js",
-      "expo-font"
+      "expo-font",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
