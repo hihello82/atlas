@@ -82,7 +82,7 @@ export default function ProfileScreen() {
 
   const handleEditProfile = () => {
     console.log('Edit Profile Pressed');
-    router.push('../profileSubtabs/settings');
+    router.push('../profileSubtabs/soettings');
   };
 
   const handleShareProfile = () => {
