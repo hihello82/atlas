@@ -335,8 +335,7 @@ export default function HomeScreen() {
             <Image source={{ uri: activity.image }} style={styles.activityImage} />
             <View style={styles.activityInfo}>
               <View style={styles.activityLocation}>
-                <Text style={styles.cityText}>🇯🇵 {activity.city}</Text>
-                <Text style={styles.countryText}>{activity.country}</Text>
+                <Text style={styles.countryText}>🇯🇵 {activity.country}</Text>
               </View>
               <Text style={styles.dateText}>{activity.date}</Text>
             </View>
@@ -391,9 +390,11 @@ const styles = StyleSheet.create({
   },
   nameText: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a24',
-    marginTop: 4,
+    fontFamily: 'Playfair Display',
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    color: '#0D1B2A',
+    marginTop: -2,
   },
   headerIcons: {
     flexDirection: 'row',
@@ -561,8 +562,10 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1a1a24',
+    fontFamily: 'Playfair Display',
+    fontWeight: '600',
+    letterSpacing: 0.25,
+    color: '#0D1B2A',
     marginBottom: 15,
   },
   activityCard: {
@@ -590,13 +593,13 @@ const styles = StyleSheet.create({
   activityLocation: {
     flex: 1,
   },
-  cityText: {
+  countryText: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1a1a24',
     marginBottom: 4,
   },
-  countryText: {
+  cityText: {
     fontSize: 14,
     color: '#666',
   },

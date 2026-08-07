@@ -11,6 +11,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface UserData {
   uid: string;
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
 
   const handleEditProfile = () => {
     console.log('Edit Profile Pressed');
+    router.push('../profileSubtabs/settings');
   };
 
   const handleShareProfile = () => {
@@ -135,117 +137,119 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Profile Picture */}
-      <View style={styles.avatarContainer}>
-        <Image
-          source={{
-            uri:
-              userData?.profilePhoto ||
-              'https://via.placeholder.com/150',
-          }}
-          style={styles.avatar}
-        />
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container}>
+        {/* Profile Picture */}
+        <View style={styles.avatarContainer}>
+            <Image
+            source={{
+                uri:
+                userData?.profilePhoto ||
+                'https://via.placeholder.com/150',
+            }}
+            style={styles.avatar}
+            />
+        </View>
 
-      {/* Name and Username */}
-      <Text style={styles.displayName}>{fullName}</Text>
-      <Text style={styles.username}>{formattedUsername}</Text>
+        {/* Name and Username */}
+        <Text style={styles.displayName}>{fullName}</Text>
+        <Text style={styles.username}>{formattedUsername}</Text>
 
-      {/* Followers & Following Row */}
-      <View style={styles.statsRow}>
-        <Pressable
-          style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
-          onPress={() => router.push('../profileSubtabs/following')}
-        >
-          <Text style={styles.statNumber}>
-            {userData?.social?.following ?? 0}
-          </Text>
-          <Text style={styles.statLabel}>Following</Text>
-        </Pressable>
+        {/* Followers & Following Row */}
+        <View style={styles.statsRow}>
+            <Pressable
+            style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
+            onPress={() => router.push('../profileSubtabs/following')}
+            >
+            <Text style={styles.statNumber}>
+                {userData?.social?.following ?? 0}
+            </Text>
+            <Text style={styles.statLabel}>Following</Text>
+            </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
-          onPress={() => router.push('../profileSubtabs/followers')}
-        >
-          <Text style={styles.statNumber}>
-            {userData?.social?.followers ?? 0}
-          </Text>
-          <Text style={styles.statLabel}>Followers</Text>
-        </Pressable>
-      </View>
+            <Pressable
+            style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
+            onPress={() => router.push('../profileSubtabs/followers')}
+            >
+            <Text style={styles.statNumber}>
+                {userData?.social?.followers ?? 0}
+            </Text>
+            <Text style={styles.statLabel}>Followers</Text>
+            </Pressable>
+        </View>
 
-      {/* Action Buttons */}
-      <View style={styles.actionButtonsRow}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.actionButton,
-            styles.editButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={handleEditProfile}
-        >
-          <Text style={styles.editButtonText}>Edit profile</Text>
-        </Pressable>
+        {/* Action Buttons */}
+        <View style={styles.actionButtonsRow}>
+            <Pressable
+            style={({ pressed }) => [
+                styles.actionButton,
+                styles.editButton,
+                pressed && styles.pressed,
+            ]}
+            onPress={handleEditProfile}
+            >
+            <Text style={styles.editButtonText}>Edit profile</Text>
+            </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.actionButton,
-            styles.shareButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={handleShareProfile}
-        >
-          <Text style={styles.shareButtonText}>Share profile</Text>
-        </Pressable>
-      </View>
+            <Pressable
+            style={({ pressed }) => [
+                styles.actionButton,
+                styles.shareButton,
+                pressed && styles.pressed,
+            ]}
+            onPress={handleShareProfile}
+            >
+            <Text style={styles.shareButtonText}>Share profile</Text>
+            </Pressable>
+        </View>
 
-      {/* Travel Trackers Cards */}
-      <View style={styles.cardsRow}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.trackerCard,
-            styles.visitedCard,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.push('../subtabs/Countries')}
-        >
-          <Text style={[styles.cardValue, { color: '#0084C7' }]}>
-            {userData?.stats?.countriesVisited ?? 0}
-          </Text>
-          <Text style={styles.cardLabel}>Visited Countries</Text>
-        </Pressable>
+        {/* Travel Trackers Cards */}
+        <View style={styles.cardsRow}>
+            <Pressable
+            style={({ pressed }) => [
+                styles.trackerCard,
+                styles.visitedCard,
+                pressed && styles.pressed,
+            ]}
+            onPress={() => router.push('../subtabs/Countries')}
+            >
+            <Text style={[styles.cardValue, { color: '#0084C7' }]}>
+                {userData?.stats?.countriesVisited ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Visited Countries</Text>
+            </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.trackerCard,
-            styles.citiesCard,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.push('../subtabs/Cities')}
-        >
-          <Text style={[styles.cardValue, { color: '#10B981' }]}>
-            {userData?.stats?.citiesVisited ?? 0}
-          </Text>
-          <Text style={styles.cardLabel}>Cities Tracked</Text>
-        </Pressable>
-      </View>
+            <Pressable
+            style={({ pressed }) => [
+                styles.trackerCard,
+                styles.citiesCard,
+                pressed && styles.pressed,
+            ]}
+            onPress={() => router.push('../subtabs/Cities')}
+            >
+            <Text style={[styles.cardValue, { color: '#10B981' }]}>
+                {userData?.stats?.citiesVisited ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Cities Tracked</Text>
+            </Pressable>
+        </View>
 
-      {/* Debug Sign Out Button */}
-      <View style={styles.footerContainer}>
-        <Pressable
-          style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
-          onPress={handleSignOut}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.signOutText}>Sign Out (Debug)</Text>
-          )}
-        </Pressable>
-      </View>
-    </ScrollView>
+        {/* Debug Sign Out Button */}
+        <View style={styles.footerContainer}>
+            <Pressable
+            style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+            onPress={handleSignOut}
+            disabled={loading}
+            >
+            {loading ? (
+                <ActivityIndicator color="#fff" />
+            ) : (
+                <Text style={styles.signOutText}>Sign Out (Debug)</Text>
+            )}
+            </Pressable>
+        </View>
+        </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -321,9 +325,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderColor: '#eee',
+    borderWidth: 1,
   },
   editButton: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#eee',
   },
   editButtonText: {
     fontSize: 14,
@@ -331,7 +338,8 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   shareButton: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#eee',
   },
   shareButtonText: {
     fontSize: 14,
@@ -352,10 +360,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   visitedCard: {
-    backgroundColor: '#E0F2FE',
+    backgroundColor: '#eef6ff',
+    borderColor: '#d0e5ff',
+    borderWidth: 1,
   },
   citiesCard: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: '#eeffee',
+    borderColor: '#dcf4dc',
+    borderWidth: 1,
   },
   cardValue: {
     fontSize: 24,
@@ -386,5 +398,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
   },
 });

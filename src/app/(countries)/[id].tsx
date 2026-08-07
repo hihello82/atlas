@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../../config/firebaseConfig';
+// Import your local GeoJSON data
+import geoJsonData from '../../../assets/custom.geo.json';
 
 export default function CountryDetailScreen() {
   const router = useRouter();
@@ -21,14 +23,20 @@ export default function CountryDetailScreen() {
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Parse population safely from either Firestore details or route params
+  // Check if the current country code exists in the GeoJSON
+  // Assumes your GeoJSON uses properties.iso_a3 or properties.adm0_a3 for 3-letter codes
+  const isCountryInGeoJson = geoJsonData.features.some(
+    (feature: any) => 
+      feature.properties?.iso_a3 === params.code || 
+      feature.properties?.adm0_a3 === params.code
+  );
+
   const rawPopulation = details?.population ?? params.population;
   const parsedPopulation =
     rawPopulation !== undefined && !isNaN(Number(rawPopulation))
       ? Number(rawPopulation).toLocaleString()
       : undefined;
 
-  // Extract currencies and languages matching REST Countries schemas
   const currencies = details?.currencies
     ? Object.values(details.currencies)
         .map((c: any) => (c.symbol ? `${c.name} (${c.symbol})` : c.name))
@@ -69,7 +77,6 @@ export default function CountryDetailScreen() {
           const rawData = docSnap.data().countries || docSnap.data().data || [];
           const countriesList = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
 
-          // Match country by cca3 or fallback code
           const match = countriesList.find(
             (c: any) => (c.cca3 || c.codes?.alpha_3) === params.code
           );
@@ -116,18 +123,37 @@ export default function CountryDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Floating Add Country Button if valid match is found in GeoJSON */}
+      {isCountryInGeoJson && (
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => router.push({
+              pathname: '../subtabs/addTrip', // Replace with your target screen path
+              params: { code: params.code, name: params.name }
+            })}
+          >
+            <Text style={styles.addButtonText}>Add Visit to {params.name}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { flex: 1, backgroundColor: '#f8f9fa',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  
   backButton: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
-  content: { padding: 20 },
+  content: { padding: 20, paddingBottom: 100 }, // Added paddingBottom to prevent overlap with floating button
   header: { alignItems: 'center', marginBottom: 24 },
   flagImage: { width: 120, height: 80, borderRadius: 8, marginBottom: 12 },
   flagEmoji: { fontSize: 64, marginBottom: 8 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#1a1a24' },
+  title: { fontSize: 28, fontWeight: 800, color: '#1a1a24', fontFamily: 'Playfair Display' },
   subtitle: { fontSize: 16, color: '#666', marginTop: 4 },
   infoGrid: { gap: 12 },
   infoCard: {
@@ -139,4 +165,25 @@ const styles = StyleSheet.create({
   },
   infoLabel: { fontSize: 13, color: '#64748b', fontWeight: '500', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#1e293b', fontWeight: '600' },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: 'rgba(248, 249, 250, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  addButton: {
+    backgroundColor: '#007aff',
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  }
 });
