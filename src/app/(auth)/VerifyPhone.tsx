@@ -12,6 +12,8 @@ import {
     View
 } from 'react-native'; // Added Alert for error handling
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { sharedStyles } from '../styles';
+
 
 export default function VerifyPhone() {
   // Extract parameters passed from the previous screen
@@ -137,9 +139,9 @@ const handleNextSubmission = async () => {
       <StatusBar barStyle="dark-content" />
 
       {/* Top Navigation / Back Button */}
-      <View style={styles.header}>
+      <View style={sharedStyles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={sharedStyles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -153,7 +155,7 @@ const handleNextSubmission = async () => {
       >
         {/* Header Text Section */}
         <View style={styles.textSection}>
-          <Text style={styles.title}>Enter OTP Verification Code</Text>
+          <Text style={sharedStyles.title}>Enter OTP Verification Code</Text>
           <Text style={styles.subtitle}>Verification code has been sent to</Text>
           <Text style={styles.boldPhoneText}>
             ({countryCode}) {phoneNumber}
@@ -205,8 +207,8 @@ const handleNextSubmission = async () => {
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[
-            styles.button,
-            isOtpComplete ? styles.submitButtonActive : styles.submitButtonDisabled,
+            sharedStyles.button,
+            isOtpComplete ? sharedStyles.submitButtonActive : sharedStyles.submitButtonDisabled,
           ]}
           onPress={handleNextSubmission}
           disabled={!isOtpComplete}
@@ -214,8 +216,8 @@ const handleNextSubmission = async () => {
         >
           <Text
             style={[
-              styles.buttonText,
-              isOtpComplete ? styles.buttonTextActive : styles.buttonTextDisabled,
+              sharedStyles.buttonText,
+              isOtpComplete ? sharedStyles.buttonTextActive : sharedStyles.buttonTextDisabled,
             ]}
           >
             Next
@@ -234,24 +236,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     justifyContent: 'space-between',
   },
-  header: {
-    width: '100%',
-    paddingTop: 8,
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
   content: {
     flex: 1,
     marginTop: 32,
@@ -259,14 +243,6 @@ const styles = StyleSheet.create({
   textSection: {
     alignItems: 'flex-start',
     marginBottom: 40,
-  },
-  title: {
-    fontSize: 28, // Scaled slightly down to fit the longer string gracefully
-    fontFamily: 'Playfair Display',
-    letterSpacing: 1,
-    color: '#0D1B2A',
-    fontWeight: '700',
-    marginBottom: 16,
   },
   subtitle: {
     fontSize: 15,
@@ -300,7 +276,7 @@ const styles = StyleSheet.create({
     borderColor: '#C3D0CA',
   },
   otpBoxFilled: {
-    borderColor: '#0A111E', // Darkens the border once filled
+    borderColor: '#0A111E',
   },
   resendContainer: {
     flexDirection: 'row',
@@ -317,34 +293,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0D1B2A',
   },
-  timerText: {
-    fontWeight: '400',
-  },
   buttonContainer: {
     width: '100%',
     paddingBottom: 20,
-  },
-  button: {
-    height: 54,
-    borderRadius: 27,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#9DAEAA', // Matches the grayed-out state from the original prompt
-  },
-  submitButtonActive: {
-    backgroundColor: '#0A111E', // ATLAS primary dark style
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonTextDisabled: {
-    color: '#FFFFFF',
-  },
-  buttonTextActive: {
-    color: '#FFFFFF',
   },
 });

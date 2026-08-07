@@ -8,12 +8,13 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { sharedStyles } from './styles';
 
 export default function Home(){
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[sharedStyles.authContainer, styles.container]}>
       <StatusBar barStyle="dark-content" />
 
       {/* Top Branding Section */}
@@ -60,82 +61,17 @@ export default function Home(){
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#F3FBF7', // Light mint/pale background gradient tint
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
   },
-  topSection: {
-    alignItems: 'center',
-    marginTop: 40,
-  },
-  logoContainer: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    marginTop: -20,
-    // Soft drop shadow around circular logo
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 4,
-  },
-  logo: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-  },
-  title: {
-    fontSize: 48,
-    fontFamily: 'Playfair Display', // Or custom serif font like 'Playfair Display' / 'Georgia'
-    letterSpacing: 4,
-    color: '#0D1B2A',
-    fontWeight: '500',
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#5C6B73',
-    fontWeight: '400',
-    textAlign: 'center',
-  },
-  buttonContainer: {
-    flex: 1,
-    width: '80%',
-    alignSelf: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    gap: 12,
-  },
-  button: {
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  appleButton: {
-    backgroundColor: '#0A111E',
-  },
-  appleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  outlinedButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E1E8E5',
-  },
-  outlinedButtonText: {
-    color: '#0A111E',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  topSection: { alignItems: 'center', marginTop: 40 },
+  logoContainer: { width: 220, height: 220, borderRadius: 110, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', marginBottom: 20, marginTop: -20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 15, elevation: 4 },
+  logo: { width: 180, height: 180, borderRadius: 90 },
+  title: { fontSize: 48, fontFamily: 'Playfair Display', letterSpacing: 4, color: '#0D1B2A', fontWeight: '500', marginBottom: 12 },
+  subtitle: { fontSize: 15, color: '#5C6B73', fontWeight: '400', textAlign: 'center' },
+  buttonContainer: { flex: 1, width: '80%', alignSelf: 'center', justifyContent: 'center', marginBottom: 20, gap: 12 },
+  button: { height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' },
+  appleButton: { backgroundColor: '#0A111E' },
+  appleButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  outlinedButton: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E8E5' },
+  outlinedButtonText: { color: '#0A111E', fontSize: 16, fontWeight: '600' },
 });

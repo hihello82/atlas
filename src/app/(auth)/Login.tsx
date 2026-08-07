@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { getAdditionalUserInfo, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useEffect, useState } from 'react';
+import { sharedStyles } from '../styles';
+
 
 import {
   ActivityIndicator,
@@ -207,13 +209,13 @@ export default function Login() {
     };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={sharedStyles.authContainer}>
       <StatusBar barStyle="dark-content" />
 
       {/* Top Navigation Header */}
-      <View style={styles.header}>
+      <View style={sharedStyles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={sharedStyles.backButton}
           onPress={() => router.replace('/Home')}
           activeOpacity={0.7}
         >
@@ -227,25 +229,25 @@ export default function Login() {
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={sharedStyles.scrollContent}
           showsVerticalScrollIndicator={false}
           bounces={true}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header Text Section */}
-          <View style={styles.textSection}>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Enter your details below to continue</Text>
+          <View style={sharedStyles.textSection}>
+            <Text style={sharedStyles.title}>Welcome Back</Text>
+            <Text style={sharedStyles.subtitle}>Enter your details below to continue</Text>
           </View>
 
           {/* Form Fields */}
-          <View style={styles.formContainer}>
+          <View style={sharedStyles.formContainer}>
             {/* Email or Phone Input */}
-            <View style={styles.inputContainer}>
+            <View style={sharedStyles.inputContainer}>
               <TextInput
                 style={[
-                  styles.input,
-                  (showEmailError || hasProviderError) && styles.inputError,
+                  sharedStyles.input,
+                  (showEmailError || hasProviderError) && sharedStyles.inputError,
                 ]}
                 placeholder="Email Address"
                 placeholderTextColor="#8E9AA0"
@@ -259,14 +261,14 @@ export default function Login() {
                 }}
               />
               {showEmailError && (
-                <Text style={styles.fieldErrorText}>Please enter a valid email address.</Text>
+                <Text style={sharedStyles.fieldErrorText}>Please enter a valid email address.</Text>
               )}
             </View>
 
             {/* Password Input */}
-            <View style={styles.inputContainer}>
+            <View style={sharedStyles.inputContainer}>
               <TextInput
-                style={styles.input}
+                style={sharedStyles.input}
                 placeholder="Password"
                 placeholderTextColor="#8E9AA0"
                 secureTextEntry
@@ -280,11 +282,11 @@ export default function Login() {
           </View>
 
           {/* Login Button */}
-          <View style={styles.buttonContainer}>
+          <View style={sharedStyles.buttonContainer}>
             <TouchableOpacity
               style={[
-                styles.button,
-                isFormFilled && !loading ? styles.submitButtonActive : styles.submitButtonDisabled,
+                sharedStyles.button,
+                isFormFilled && !loading ? sharedStyles.submitButtonActive : sharedStyles.submitButtonDisabled,
               ]}
               onPress={handleLogin}
               disabled={!isFormFilled || loading}
@@ -295,8 +297,8 @@ export default function Login() {
               ) : (
                 <Text
                   style={[
-                    styles.buttonText,
-                    isFormFilled ? styles.buttonTextActive : styles.buttonTextDisabled,
+                    sharedStyles.buttonText,
+                    isFormFilled ? sharedStyles.buttonTextActive : sharedStyles.buttonTextDisabled,
                   ]}
                 >
                   Log In
@@ -307,21 +309,21 @@ export default function Login() {
 
           {/* Error Text Display */}
           {errorMessage && (
-            <Text style={styles.errorText}>{errorMessage}</Text>
+            <Text style={sharedStyles.bannerErrorText}>{errorMessage}</Text>
           )}
 
           {/* Horizontal Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
+          <View style={sharedStyles.dividerContainer}>
+            <View style={sharedStyles.dividerLine} />
+            <Text style={sharedStyles.dividerText}>or continue with</Text>
+            <View style={sharedStyles.dividerLine} />
           </View>
 
           {/* Social Log-In Buttons Row */}
-          <View style={styles.socialRow}>
+          <View style={sharedStyles.socialRow}>
             {/* Google Button */}
             <TouchableOpacity
-              style={styles.socialButton}
+              style={sharedStyles.socialButton}
               onPress={handleGoogleLogin}
               activeOpacity={0.8}
             >
@@ -330,7 +332,7 @@ export default function Login() {
 
             {/* Apple Button */}
             <TouchableOpacity
-              style={styles.socialButton}
+              style={sharedStyles.socialButton}
               onPress={handleAppleLogin}
               activeOpacity={0.8}
             >
@@ -355,128 +357,6 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3FBF7',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  header: {
-    width: '100%',
-    paddingTop: 8,
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  scrollContent: {
-    paddingTop: 24,
-    paddingBottom: 120,
-    flexGrow: 1,
-  },
-  textSection: {
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Playfair Display',
-    letterSpacing: 1,
-    color: '#0D1B2A',
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#5C6B73',
-    fontWeight: '400',
-  },
-  formContainer: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  inputContainer: {
-    width: '100%',
-  },
-  input: {
-    fontSize: 16,
-    color: '#0D1B2A',
-    borderBottomWidth: 1,
-    borderBottomColor: '#0D1B2A',
-    paddingVertical: 8,
-  },
-  buttonContainer: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  button: {
-    height: 54,
-    borderRadius: 27,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#9DAEAA',
-  },
-  submitButtonActive: {
-    backgroundColor: '#0A111E',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonTextDisabled: {
-    color: '#FFFFFF',
-  },
-  buttonTextActive: {
-    color: '#FFFFFF',
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#C5D3CE',
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    fontSize: 14,
-    color: '#5C6B73',
-  },
-  socialRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-  },
-  socialButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E1E8E5',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
   signUpLinkContainer: {
     marginTop: 16,
     paddingVertical: 4,
@@ -490,21 +370,5 @@ const styles = StyleSheet.create({
   signUpTextBold: {
     fontWeight: '700',
     color: '#0D1B2A',
-  },
-  errorText: {
-    color: '#D90429',
-    fontSize: 13,
-    marginBottom: 12,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  inputError: {
-    borderBottomColor: '#D90429',
-    borderBottomWidth: 2,
-  },
-  fieldErrorText: {
-    color: '#D90429',
-    fontSize: 12,
-    marginTop: 4,
   },
 });

@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors, sharedStyles } from '../styles';
 
 interface UserData {
   uid: string;
@@ -137,7 +138,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={sharedStyles.appContainer}>
         <ScrollView contentContainerStyle={styles.container}>
         {/* Profile Picture */}
         <View style={styles.avatarContainer}>
@@ -158,7 +159,7 @@ export default function ProfileScreen() {
         {/* Followers & Following Row */}
         <View style={styles.statsRow}>
             <Pressable
-            style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.statBox, pressed && sharedStyles.pressed]}
             onPress={() => router.push('../profileSubtabs/following')}
             >
             <Text style={styles.statNumber}>
@@ -168,7 +169,7 @@ export default function ProfileScreen() {
             </Pressable>
 
             <Pressable
-            style={({ pressed }) => [styles.statBox, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.statBox, pressed && sharedStyles.pressed]}
             onPress={() => router.push('../profileSubtabs/followers')}
             >
             <Text style={styles.statNumber}>
@@ -184,7 +185,7 @@ export default function ProfileScreen() {
             style={({ pressed }) => [
                 styles.actionButton,
                 styles.editButton,
-                pressed && styles.pressed,
+                pressed && sharedStyles.pressed,
             ]}
             onPress={handleEditProfile}
             >
@@ -195,7 +196,7 @@ export default function ProfileScreen() {
             style={({ pressed }) => [
                 styles.actionButton,
                 styles.shareButton,
-                pressed && styles.pressed,
+                pressed && sharedStyles.pressed,
             ]}
             onPress={handleShareProfile}
             >
@@ -209,7 +210,7 @@ export default function ProfileScreen() {
             style={({ pressed }) => [
                 styles.trackerCard,
                 styles.visitedCard,
-                pressed && styles.pressed,
+                pressed && sharedStyles.pressed,
             ]}
             onPress={() => router.push('../subtabs/Countries')}
             >
@@ -223,7 +224,7 @@ export default function ProfileScreen() {
             style={({ pressed }) => [
                 styles.trackerCard,
                 styles.citiesCard,
-                pressed && styles.pressed,
+                pressed && sharedStyles.pressed,
             ]}
             onPress={() => router.push('../subtabs/Cities')}
             >
@@ -237,7 +238,7 @@ export default function ProfileScreen() {
         {/* Debug Sign Out Button */}
         <View style={styles.footerContainer}>
             <Pressable
-            style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.signOutButton, pressed && sharedStyles.pressed]}
             onPress={handleSignOut}
             disabled={loading}
             >
@@ -254,153 +255,35 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  container: {
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-  },
-  avatarContainer: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 3,
-    borderColor: '#0084C7',
-    padding: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 50,
-  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { paddingVertical: 40, paddingHorizontal: 20, alignItems: 'center', backgroundColor: '#f8f9fa' },
+  avatarContainer: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: '#0084C7', padding: 3, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  avatar: { width: '100%', height: '100%', borderRadius: 50 },
   displayName: {
-    fontFamily: 'PlayfairDisplay',
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
+    fontFamily: 'Playfair Display', // was 'PlayfairDisplay' (typo)
+    fontSize: 28,                    // aligned to shared title size
+    fontWeight: '700',                // was '700' already — kept
+    color: colors.titleDark,          // was '#111827'
+    marginBottom: 8,                  // aligned to shared title spacing
   },
-  username: {
-    fontSize: 15,
-    color: '#9CA3AF',
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 32,
-    marginBottom: 20,
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-    marginBottom: 24,
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#eee',
-    borderWidth: 1,
-  },
-  editButton: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#eee',
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  shareButton: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#eee',
-  },
-  shareButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  cardsRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-    marginBottom: 32,
-  },
-  trackerCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 16,
-    minHeight: 90,
-    justifyContent: 'space-between',
-  },
-  visitedCard: {
-    backgroundColor: '#eef6ff',
-    borderColor: '#d0e5ff',
-    borderWidth: 1,
-  },
-  citiesCard: {
-    backgroundColor: '#eeffee',
-    borderColor: '#dcf4dc',
-    borderWidth: 1,
-  },
-  cardValue: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  cardLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#4B5563',
-  },
-  footerContainer: {
-    width: '100%',
-    marginTop: 'auto',
-    alignItems: 'center',
-  },
-  signOutButton: {
-    backgroundColor: '#ff3b30',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
-  },
-  signOutText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
+  username: { fontSize: 15, color: '#9CA3AF', marginBottom: 16 },
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 32, marginBottom: 20 },
+  statBox: { alignItems: 'center' },
+  statNumber: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  statLabel: { fontSize: 14, color: '#9CA3AF', marginTop: 2 },
+  actionButtonsRow: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 24 },
+  actionButton: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderColor: '#eee', borderWidth: 1 },
+  editButton: { backgroundColor: '#FFFFFF', borderColor: '#eee' },
+  editButtonText: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  shareButton: { backgroundColor: '#FFFFFF', borderColor: '#eee' },
+  shareButtonText: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  cardsRow: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 32 },
+  trackerCard: { flex: 1, padding: 16, borderRadius: 16, minHeight: 90, justifyContent: 'space-between' },
+  visitedCard: { backgroundColor: '#eef6ff', borderColor: '#d0e5ff', borderWidth: 1 },
+  citiesCard: { backgroundColor: '#eeffee', borderColor: '#dcf4dc', borderWidth: 1 },
+  cardValue: { fontSize: 24, fontWeight: '700' },
+  cardLabel: { fontSize: 13, fontWeight: '500', color: '#4B5563' },
+  footerContainer: { width: '100%', marginTop: 'auto', alignItems: 'center' },
+  signOutButton: { backgroundColor: '#ff3b30', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, width: '100%', alignItems: 'center' },
+  signOutText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
 });

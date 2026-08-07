@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../../config/firebaseConfig';
 // Import your local GeoJSON data
 import geoJsonData from '../../../assets/custom.geo.json';
+import { colors, sharedStyles } from '../styles';
 
 export default function CountryDetailScreen() {
   const router = useRouter();
@@ -95,9 +96,11 @@ export default function CountryDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="#1a1a24" />
-      </TouchableOpacity>
+      <View style={sharedStyles.header}>
+        <TouchableOpacity style={sharedStyles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
@@ -134,7 +137,7 @@ export default function CountryDetailScreen() {
               params: { code: params.code, name: params.name }
             })}
           >
-            <Text style={styles.addButtonText}>Add Visit to {params.name}</Text>
+            <Text style={styles.addButtonText}>Add New Visit</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -143,47 +146,18 @@ export default function CountryDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  
-  backButton: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
-  content: { padding: 20, paddingBottom: 100 }, // Added paddingBottom to prevent overlap with floating button
+  container: { flex: 1, backgroundColor: colors.appBackground, paddingHorizontal: 24, paddingVertical: 20 },
+  content: { padding: 20, paddingBottom: 100 },
   header: { alignItems: 'center', marginBottom: 24 },
   flagImage: { width: 120, height: 80, borderRadius: 8, marginBottom: 12 },
   flagEmoji: { fontSize: 64, marginBottom: 8 },
   title: { fontSize: 28, fontWeight: 800, color: '#1a1a24', fontFamily: 'Playfair Display' },
   subtitle: { fontSize: 16, color: '#666', marginTop: 4 },
   infoGrid: { gap: 12 },
-  infoCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
+  infoCard: { backgroundColor: '#ffffff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' },
   infoLabel: { fontSize: 13, color: '#64748b', fontWeight: '500', marginBottom: 4 },
   infoValue: { fontSize: 16, color: '#1e293b', fontWeight: '600' },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: 'rgba(248, 249, 250, 0.95)',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  addButton: {
-    backgroundColor: '#007aff',
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  }
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: 'rgba(248, 249, 250, 0.95)', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
+  addButton: { backgroundColor: '#007aff', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+  addButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });

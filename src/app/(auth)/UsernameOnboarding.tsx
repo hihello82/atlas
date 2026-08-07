@@ -8,13 +8,13 @@ import {
     Platform,
     ScrollView,
     StatusBar,
-    StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { sharedStyles } from '../styles';
 
 export default function UsernameOnboarding() {
   const router = useRouter();
@@ -102,13 +102,13 @@ export default function UsernameOnboarding() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={sharedStyles.authContainer}>
       <StatusBar barStyle="dark-content" />
 
       {/* Top Navigation Header */}
-      <View style={styles.header}>
+      <View style={sharedStyles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={sharedStyles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -122,24 +122,24 @@ export default function UsernameOnboarding() {
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={sharedStyles.scrollContent}
           showsVerticalScrollIndicator={false}
           bounces={true}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header Text Section */}
-          <View style={styles.textSection}>
-            <Text style={styles.title}>Choose your username</Text>
-            <Text style={styles.subtitle}>This is how other users will see you.</Text>
+          <View style={sharedStyles.textSection}>
+            <Text style={sharedStyles.title}>Choose your username</Text>
+            <Text style={sharedStyles.subtitle}>This is how other users will see you.</Text>
           </View>
 
           {/* Form Fields */}
-          <View style={styles.formContainer}>
-            <View style={styles.inputContainer}>
+          <View style={sharedStyles.formContainer}>
+            <View style={sharedStyles.inputContainer}>
               <TextInput
                 style={[
-                  styles.input,
-                  !!usernameError && styles.inputError,
+                  sharedStyles.input,
+                  !!usernameError && sharedStyles.inputError,
                 ]}
                 placeholder="Username"
                 placeholderTextColor="#8E9AA0"
@@ -152,17 +152,17 @@ export default function UsernameOnboarding() {
                 editable={!isSubmitting}
               />
               {!!usernameError && (
-                <Text style={styles.errorText}>{usernameError}</Text>
+                <Text style={sharedStyles.fieldErrorText}>{usernameError}</Text>
               )}
             </View>
           </View>
 
           {/* Continue Button */}
-          <View style={styles.buttonContainer}>
+          <View style={sharedStyles.buttonContainer}>
             <TouchableOpacity
               style={[
-                styles.button,
-                isFormValid ? styles.submitButtonActive : styles.submitButtonDisabled,
+                sharedStyles.button,
+                isFormValid ? sharedStyles.submitButtonActive : sharedStyles.submitButtonDisabled,
               ]}
               onPress={handleContinue}
               disabled={!isFormValid || isSubmitting}
@@ -170,8 +170,8 @@ export default function UsernameOnboarding() {
             >
               <Text
                 style={[
-                  styles.buttonText,
-                  isFormValid ? styles.buttonTextActive : styles.buttonTextDisabled,
+                  sharedStyles.buttonText,
+                  isFormValid ? sharedStyles.buttonTextActive : sharedStyles.buttonTextDisabled,
                 ]}
               >
                 {isSubmitting ? 'Creating...' : 'Continue'}
@@ -183,102 +183,3 @@ export default function UsernameOnboarding() {
     </SafeAreaView>
   );
 }
-
-// Keeping styles identical to SignUp for visual consistency
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3FBF7',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  header: {
-    width: '100%',
-    paddingTop: 8,
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  scrollContent: {
-    paddingTop: 24,
-    paddingBottom: 120,
-    flexGrow: 1,
-  },
-  textSection: {
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Playfair Display',
-    letterSpacing: 1,
-    color: '#0D1B2A',
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#5C6B73',
-    fontWeight: '400',
-  },
-  formContainer: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  inputContainer: {
-    width: '100%',
-  },
-  input: {
-    fontSize: 16,
-    color: '#0D1B2A',
-    borderBottomWidth: 1,
-    borderBottomColor: '#0D1B2A',
-    paddingVertical: 8,
-  },
-  inputError: {
-    borderBottomColor: '#D90429',
-  },
-  errorText: {
-    color: '#D90429',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  buttonContainer: {
-    width: '100%',
-    marginTop: 20,
-  },
-  button: {
-    height: 54,
-    borderRadius: 27,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#9DAEAA',
-  },
-  submitButtonActive: {
-    backgroundColor: '#0A111E',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonTextDisabled: {
-    color: '#FFFFFF',
-  },
-  buttonTextActive: {
-    color: '#FFFFFF',
-  },
-});

@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { auth, db } from '../../../config/firebaseConfig';
+import { colors, sharedStyles } from '../styles';
 
 // Import your GeoJSON data
 import geoJsonData from '../../../assets/custom.geo.json';
@@ -277,7 +278,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={sharedStyles.appContainer}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
         {/* HEADER */}
@@ -289,10 +290,10 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconButton}>
+            <TouchableOpacity style={sharedStyles.backButton}>
               <Ionicons name="notifications-outline" size={24} color="black" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
+            <TouchableOpacity style={sharedStyles.backButton}>
               <Ionicons name="time-outline" size={24} color="black" />
             </TouchableOpacity>
           </View>
@@ -431,277 +432,47 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  searchWrapper: {
-    position: 'relative',
-    zIndex: 1000, 
-    elevation: 1000, // Necessary for Android zIndex
-    marginBottom: 16,
-  },
-  searchSectionContainer: {
-    position: 'relative',
-    zIndex: 1000,
-    elevation: 1000,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#e1e8ee',
-  },
-  container: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  welcomeText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  nameText: {
-    fontSize: 28,
-    fontFamily: 'Playfair Display',
-    fontWeight: '800',
-    letterSpacing: 0.7,
-    color: '#0D1B2A',
-    marginTop: -2,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  searchBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 16,
-    height: 52,
-  },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#2c3e50',
-    height: '100%',
-  },
-  clearButton: {
-    padding: 4,
-  },
-  searchResultsContainer: {
-    position: 'absolute',
-    top: 58,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-    zIndex: 2000, // Make sure zIndex is higher than parent containers
-  },
-  searchResultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  spinner: { 
-    marginRight: 8 
-  },
-  resultFlag: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  resultTextContainer: {
-    flex: 1,
-  },
-  resultName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  resultSubtitle: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  mapCard: {
-    backgroundColor: '#f0f3f5',
-    borderRadius: 20,
-    padding: 0,
-    marginBottom: 20,
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  mapWrapper: {
-    width: '100%',
-    height: '100%',
-  },
-  exploredBadge: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    backgroundColor: '#fff',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  badgeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#007aff',
-    marginRight: 8,
-  },
-  badgeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 30,
-  },
-  statBox: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 16,
-    marginHorizontal: 4,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  statBoxBlue: {
-    backgroundColor: '#eef6ff',
-    borderColor: '#d0e5ff',
-  },
-  statBoxGreen: {
-    backgroundColor: '#eeffee',
-    borderColor: '#dcf4dc',
-  },
-  statBoxWhite: {
-    backgroundColor: '#fff',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1a1a24',
-    marginBottom: 4,
-  },
-  textBlue: {
-    color: '#007aff',
-  },
-  textGreen: {
-    color: '#34c759',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontFamily: 'Playfair Display',
-    fontWeight: '600',
-    letterSpacing: 0.25,
-    color: '#0D1B2A',
-    marginBottom: 15,
-  },
-  activityCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginBottom: 15,
-  },
-  activityImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-    marginRight: 15,
-  },
-  activityInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  activityLocation: {
-    flex: 1,
-  },
-  countryText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a1a24',
-    marginBottom: 4,
-  },
-  cityText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  dateText: {
-    fontSize: 13,
-    color: '#999',
-  },
-  emptyActivityContainer: {
-    paddingVertical: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  emptyActivityText: {
-    fontSize: 15,
-    color: '#95a5a6',
-    fontWeight: '500',
-  }
+  searchWrapper: { position: 'relative', zIndex: 1000, elevation: 1000, marginBottom: 16 },
+  searchSectionContainer: { position: 'relative', zIndex: 1000, elevation: 1000 },
+  searchInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, height: 48, borderWidth: 1, borderColor: '#e1e8ee' },
+  container: { padding: 20, paddingBottom: 40 },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 10 },
+  welcomeText: { fontSize: 16, color: colors.subtitleGray }, // was '#666'
+  nameText: { fontSize: 28, fontFamily: 'Playfair Display', fontWeight: '700', letterSpacing: 0.7, color: colors.titleDark, marginTop: -2 }, // fontWeight aligned to '700'
+  headerIcons: { flexDirection: 'row', gap: 10 },
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 28, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 16, height: 52 },
+  searchIcon: { marginRight: 10 },
+  searchInput: { flex: 1, fontSize: 15, color: '#2c3e50', height: '100%' },
+  clearButton: { padding: 4 },
+  searchResultsContainer: { position: 'absolute', top: 58, left: 0, right: 0, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5, zIndex: 2000 },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  spinner: { marginRight: 8 },
+  resultFlag: { fontSize: 20, marginRight: 12 },
+  resultTextContainer: { flex: 1 },
+  resultName: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
+  resultSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  mapCard: { backgroundColor: '#f0f3f5', borderRadius: 20, padding: 0, marginBottom: 20, height: 200, justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
+  mapWrapper: { width: '100%', height: '100%' },
+  exploredBadge: { position: 'absolute', bottom: 20, left: 20, backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#007aff', marginRight: 8 },
+  badgeText: { fontSize: 14, fontWeight: '600', color: '#333' },
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 30 },
+  statBox: { flex: 1, padding: 15, borderRadius: 16, marginHorizontal: 4, borderWidth: 1, borderColor: '#eee' },
+  statBoxBlue: { backgroundColor: '#eef6ff', borderColor: '#d0e5ff' },
+  statBoxGreen: { backgroundColor: '#eeffee', borderColor: '#dcf4dc' },
+  statBoxWhite: { backgroundColor: '#fff' },
+  statNumber: { fontSize: 24, fontWeight: 'bold', color: '#1a1a24', marginBottom: 4 },
+  textBlue: { color: '#007aff' },
+  textGreen: { color: '#34c759' },
+  statLabel: { fontSize: 12, color: '#666' },
+  sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: '#0D1B2A', marginBottom: 15 },
+  activityCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#eee', marginBottom: 15 },
+  activityImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15 },
+  activityInfo: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activityLocation: { flex: 1 },
+  countryText: { fontSize: 16, fontWeight: 'bold', color: '#1a1a24', marginBottom: 4 },
+  cityText: { fontSize: 14, color: '#666' },
+  dateText: { fontSize: 13, color: '#999' },
+  emptyActivityContainer: { paddingVertical: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#eee' },
+  emptyActivityText: { fontSize: 15, color: '#95a5a6', fontWeight: '500' },
 });

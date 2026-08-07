@@ -14,6 +14,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { sharedStyles } from '../styles';
 
 // Import your Firestore instance and query methods
 
@@ -78,9 +79,9 @@ export default function Phone() {
       <StatusBar barStyle="dark-content" />
 
       {/* Top Navigation / Back Button */}
-      <View style={styles.header}>
+      <View style={sharedStyles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={sharedStyles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -94,8 +95,8 @@ export default function Phone() {
       >
         {/* Header Text Section */}
         <View style={styles.textSection}>
-          <Text style={styles.title}>Get Started</Text>
-          <Text style={styles.subtitle}>Enter your phone number</Text>
+          <Text style={sharedStyles.title}>Get Started</Text>
+          <Text style={sharedStyles.subtitle}>Enter your phone number</Text>
         </View>
 
         {/* Phone Input Row */}
@@ -128,7 +129,7 @@ export default function Phone() {
 
         {/* Error Text Message */}
         {!!errorMessage && (
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={sharedStyles.bannerErrorText}>{errorMessage}</Text>
         )}
 
         {/* Disclaimer / Terms Text */}
@@ -141,8 +142,8 @@ export default function Phone() {
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[
-            styles.button,
-            isPhoneValid ? styles.submitButtonActive : styles.submitButtonDisabled,
+            sharedStyles.button,
+            isPhoneValid ? sharedStyles.submitButtonActive : sharedStyles.submitButtonDisabled,
           ]}
           onPress={handlePhoneSubmission}
           disabled={!isPhoneValid || loading}
@@ -153,8 +154,8 @@ export default function Phone() {
           ) : (
             <Text
               style={[
-                styles.buttonText,
-                isPhoneValid ? styles.buttonTextActive : styles.buttonTextDisabled,
+                sharedStyles.buttonText,
+                isPhoneValid ? sharedStyles.buttonTextActive : sharedStyles.buttonTextDisabled,
               ]}
             >
               Submit
@@ -185,24 +186,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     justifyContent: 'space-between',
   },
-  header: {
-    width: '100%',
-    paddingTop: 8,
-    alignItems: 'flex-start',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
   content: {
     flex: 1,
     marginTop: 32,
@@ -210,19 +193,6 @@ const styles = StyleSheet.create({
   textSection: {
     alignItems: 'flex-start',
     marginBottom: 28,
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Playfair Display',
-    letterSpacing: 1,
-    color: '#0D1B2A',
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#5C6B73',
-    fontWeight: '400',
   },
   inputRowContainer: {
     flexDirection: 'row',
@@ -233,7 +203,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   inputRowError: {
-    borderBottomColor: '#D90429', // Red highlight when error exists
+    borderBottomColor: '#D90429',
     borderBottomWidth: 2,
   },
   countryPicker: {
@@ -253,49 +223,16 @@ const styles = StyleSheet.create({
     color: '#0D1B2A',
     paddingVertical: 0,
   },
-  errorText: {
-    color: '#D90429',
-    fontSize: 13,
-    marginBottom: 12,
-    fontWeight: '500',
-  },
   disclaimerText: {
     fontSize: 13,
     color: '#8E9AA0',
     lineHeight: 18,
     marginTop: 8,
   },
-  boldText: {
-    fontWeight: '600',
-    color: '#5C6B73',
-  },
   buttonContainer: {
     width: '100%',
     paddingBottom: 20,
     alignItems: 'center',
-  },
-  button: {
-    height: 54,
-    borderRadius: 27,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#9DAEAA',
-  },
-  submitButtonActive: {
-    backgroundColor: '#0A111E',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonTextDisabled: {
-    color: '#FFFFFF',
-  },
-  buttonTextActive: {
-    color: '#FFFFFF',
   },
   loginLinkContainer: {
     marginTop: 16,

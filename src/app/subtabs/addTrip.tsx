@@ -23,6 +23,7 @@ import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatli
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../../config/firebaseConfig';
+import { colors, sharedStyles } from '../styles';
 
 export default function AddTrip() {
   const router = useRouter();
@@ -364,13 +365,13 @@ export default function AddTrip() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity style={sharedStyles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
           </TouchableOpacity>
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.headerTitle}>Record Visit: {name}</Text>
+          <Text style={styles.headerTitle}>Add new visit to {name}</Text>
 
           {/* Add Photos Section */}
           <Text style={styles.label}>Trip Photos</Text>
@@ -532,16 +533,14 @@ export default function AddTrip() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  container: { flex: 1, backgroundColor: colors.appBackground },
   content: { padding: 20 },
   header: { width: '100%', paddingHorizontal: 20, paddingTop: 8, alignItems: 'flex-start' },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 12, color: '#1a1a24' },
+  headerTitle: { fontSize: 28, fontWeight: '700', fontFamily: 'Playfair Display', marginBottom: 8, color: colors.titleDark }, // aligned color/weight/marginBottom to shared title
   label: { fontSize: 16, fontWeight: '600', color: '#1e293b', marginBottom: 4, marginTop: 16 },
   subText: { fontSize: 13, color: '#64748b', marginBottom: 12 },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, fontSize: 16 },
   textArea: { height: 100, textAlignVertical: 'top' },
-  
   photoAddButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0f2fe', paddingVertical: 12, borderRadius: 8, marginBottom: 12 },
   photoAddText: { fontSize: 16, color: '#007aff', fontWeight: '600', marginLeft: 8 },
   draggableListContainer: { height: 180 },
@@ -549,26 +548,11 @@ const styles = StyleSheet.create({
   imageContainer: { width: 130, height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative' },
   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
   removePhotoBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
-  captionInput: {
-    marginTop: 6,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 12,
-    color: '#1e293b',
-  },
-//   photoWrapper: { width: 110, height: 110, marginRight: 12, borderRadius: 12, overflow: 'hidden', position: 'relative' },
-//   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
-//   removePhotoBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
-
+  captionInput: { marginTop: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 12, color: '#1e293b' },
   progressContainer: { marginTop: 24 },
   progressText: { fontSize: 14, color: '#007aff', fontWeight: '600', marginBottom: 8, textAlign: 'center' },
   progressBarBg: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#007aff' },
-
   dropdownSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12 },
   dropdownText: { fontSize: 16, color: '#1e293b' },
   dateSelector: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 12, gap: 10 },
