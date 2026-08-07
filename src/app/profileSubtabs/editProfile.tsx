@@ -1,6 +1,12 @@
+// REPLACE THE IMPORTS AT THE TOP OF editProfile.tsx WITH:
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { deleteObject, getDownloadURL, getStorage, listAll, ref, uploadBytesResumable } from 'firebase/storage';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -15,8 +21,8 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../../../config/firebaseConfig'; // Adjust import path to your firebase config
-import { colors, sharedStyles } from '../styles'; // Adjust import path to sharedStyles
+import { db } from '../../../config/firebaseConfig';
+import { colors, sharedStyles } from '../styles';
 
 interface UserData {
   firstName?: string;
@@ -28,13 +34,21 @@ interface UserData {
   profilePhoto?: string;
 }
 
+// REPLACE THE TOP OF EditProfileScreen FUNCTION WITH:
 export default function EditProfileScreen() {
   const router = useRouter();
+  const auth = getAuth();
   const userId = auth.currentUser?.uid;
 
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState<UserData>({});
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // ADD TO THE TOP OF EditProfileScreen FUNCTION (WITH OTHER STATES):
+  const [firstNameError, setFirstNameError] = useState('');
+  const [lastNameError, setLastNameError] = useState('');
+  const [singleFieldError, setSingleFieldError] = useState('');
 
   // Edit Modal States
   const [activeField, setActiveField] = useState<{
@@ -65,50 +79,123 @@ export default function EditProfileScreen() {
     }
   };
 
-   const handlePickImage = async () => {
-//     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-//     if (!permissionResult.granted) {
-//       Alert.alert('Permission Required', 'Permission to access camera roll is required!');
-//       return;
-//     }
+// REPLACE handlePickImage AND uploadProfileImage WITH:
+  const handlePickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+      return;
+    }
 
-//     const result = await ImagePicker.launchImageLibraryAsync({
-//       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-//       allowsEditing: true,
-//       aspect: [1, 1],
-//       quality: 0.8,
-//     });
+    // Interactive Crop UI (Zoom/Move) via allowsEditing: true & 1:1 aspect ratio
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
 
-//     if (!result.canceled && result.assets[0].uri && userId) {
-//       uploadProfileImage(result.assets[0].uri);
-//     }
-//   };
+    // If canceled during photo selection or cropping UI, do not proceed with upload
+    if (!result.canceled && result.assets[0] && userId) {
+      setUploadingImage(true);
+      setUploadProgress(0);
 
-//   const uploadProfileImage = async (uri: string) => {
-//     if (!userId) return;
-//     setUploadingImage(true);
-//     try {
-//       const response = await fetch(uri);
-//       const blob = await response.blob();
-//       const imageRef = ref(storage, `profilePhotos/${userId}.jpg`);
+      try {
+        const asset = result.assets[0];
 
-//       await uploadBytes(imageRef, blob);
-//       const downloadURL = await getDownloadURL(imageRef);
+        // 1. Calculate dimensions to scale newly cropped image down to max 400x400px
+        let resizeAction = {};
+        if (asset.width > asset.height) {
+          resizeAction = { width: Math.min(400, asset.width) };
+        } else {
+          resizeAction = { height: Math.min(400, asset.height) };
+        }
 
-//       const userRef = doc(db, 'users', userId);
-//       await updateDoc(userRef, { profilePhoto: downloadURL });
+        let quality = 0.8;
+        let manipResult = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: resizeAction }],
+          { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
+        );
 
-//       setUserData((prev) => ({ ...prev, profilePhoto: downloadURL }));
-//     } catch (error) {
-//       console.error('Error uploading image:', error);
-//       Alert.alert('Error', 'Failed to upload photo. Please try again.');
-//     } finally {
-//       setUploadingImage(false);
-//     }
-   };
+        // 2. Iteratively reduce quality until cropped file size is under 100KB (102,400 bytes)
+        let fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
+        while (fileInfo.exists && fileInfo.size && fileInfo.size > 102400 && quality > 0.1) {
+          quality -= 0.15;
+          manipResult = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: resizeAction }],
+            { compress: Math.max(0.1, quality), format: ImageManipulator.SaveFormat.JPEG }
+          );
+          fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
+        }
 
+        await uploadProfileImage(manipResult.uri);
+      } catch (error) {
+        console.error('Error processing image:', error);
+        Alert.alert('Error', 'Failed to process image.');
+        setUploadingImage(false);
+      }
+    }
+  };
+
+  const uploadProfileImage = async (uri: string) => {
+    if (!userId) return;
+    const storage = getStorage();
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      // Check for pre-existing files starting with "profilepicture" in /userUploads/uID/
+      const folderRef = ref(storage, `userUploads/${userId}`);
+      const folderList = await listAll(folderRef);
+      const existingProfilePics = folderList.items.filter((item) =>
+        item.name.startsWith('profilepicture')
+      );
+
+      // Delete existing profile pictures before uploading the new crop
+      await Promise.all(
+        existingProfilePics.map((fileRef) => deleteObject(fileRef).catch(() => {}))
+      );
+
+      // Upload newly cropped & compressed image prefixing file name with "profilepicture"
+      const fileName = `profilepicture_${Date.now()}.jpg`;
+      const imageRef = ref(storage, `userUploads/${userId}/${fileName}`);
+      const uploadTask = uploadBytesResumable(imageRef, blob);
+
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(progress);
+          },
+          (error) => reject(error),
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, { profilePhoto: downloadURL });
+            setUserData((prev) => ({ ...prev, profilePhoto: downloadURL }));
+            resolve();
+          }
+        );
+      });
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingImage(false);
+      setUploadProgress(0);
+    }
+  };
+
+// REPLACE openEditModal AND saveField WITH:
   const openEditModal = (key: keyof UserData | 'name', label: string) => {
     setActiveField({ key, label });
+    setFirstNameError('');
+    setLastNameError('');
+    setSingleFieldError('');
+
     if (key === 'name') {
       setEditFirstName(userData.firstName || '');
       setEditLastName(userData.lastName || '');
@@ -119,6 +206,52 @@ export default function EditProfileScreen() {
 
   const saveField = async () => {
     if (!userId || !activeField) return;
+
+    // Reset error states
+    setFirstNameError('');
+    setLastNameError('');
+    setSingleFieldError('');
+
+    // 1. Name Field Validation
+    if (activeField.key === 'name') {
+      let hasError = false;
+      if (!editFirstName.trim()) {
+        setFirstNameError("Field can't be empty.");
+        hasError = true;
+      }
+      if (!editLastName.trim()) {
+        setLastNameError("Field can't be empty.");
+        hasError = true;
+      }
+      if (hasError) return;
+    }
+
+    // 2. Single Value / Username Field Validation
+    if (activeField.key !== 'name') {
+      const trimmedValue = editSingleValue.trim();
+      if (!trimmedValue) {
+        setSingleFieldError("Field can't be empty.");
+        return;
+      }
+
+      if (activeField.key === 'username') {
+        setSaving(true);
+        try {
+          const usernamesRef = collection(db, 'usernames');
+          const q = query(usernamesRef, where('username', '==', trimmedValue.toLowerCase()));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty && trimmedValue.toLowerCase() !== userData.username?.toLowerCase()) {
+            setSingleFieldError('This username is already taken. Please choose another.');
+            setSaving(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Error checking username:', err);
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const userRef = doc(db, 'users', userId);
@@ -177,23 +310,41 @@ export default function EditProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile Picture Section */}
         <View style={styles.avatarSection}>
-          <TouchableOpacity onPress={handlePickImage} activeOpacity={0.8} disabled={uploadingImage}>
+        <TouchableOpacity 
+            style={styles.avatarWrapper} 
+            onPress={handlePickImage} 
+            activeOpacity={0.8} 
+            disabled={uploadingImage}
+        >
             {userData.profilePhoto ? (
-              <Image source={{ uri: userData.profilePhoto }} style={styles.avatar} />
+            <Image source={{ uri: userData.profilePhoto }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
                 <Ionicons name="person" size={48} color={colors.placeholderGray} />
-              </View>
+            </View>
             )}
             {uploadingImage && (
-              <View style={styles.avatarOverlay}>
+            <View style={styles.avatarOverlay}>
                 <ActivityIndicator color={colors.white} />
-              </View>
+            </View>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handlePickImage} activeOpacity={0.7}>
-            <Text style={styles.editPhotoText}>Upload profile photo</Text>
-          </TouchableOpacity>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={handlePickImage} activeOpacity={0.7} disabled={uploadingImage}>
+            <Text style={styles.editPhotoText}>
+            {uploadingImage ? 'Uploading photo...' : 'Upload profile photo'}
+            </Text>
+        </TouchableOpacity>
+
+        {/* Upload Progress Bar */}
+        {uploadingImage && (
+            <View style={styles.progressContainer}>
+            <Text style={styles.progressText}>Uploading... {Math.round(uploadProgress)}%</Text>
+            <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, { width: `${uploadProgress}%` }]} />
+            </View>
+            </View>
+        )}
         </View>
 
         {/* Profile Details Group Box */}
@@ -295,30 +446,64 @@ export default function EditProfileScreen() {
 
             {activeField?.key === 'name' ? (
               <>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editFirstName}
-                  onChangeText={setEditFirstName}
-                  placeholder="First Name"
-                  placeholderTextColor={colors.placeholderGray}
-                />
-                <TextInput
-                  style={[styles.modalInput, { marginTop: 12 }]}
-                  value={editLastName}
-                  onChangeText={setEditLastName}
-                  placeholder="Last Name"
-                  placeholderTextColor={colors.placeholderGray}
-                />
+                <View style={sharedStyles.inputContainer}>
+                  <TextInput
+                    style={[
+                      styles.modalInput,
+                      firstNameError ? sharedStyles.inputError : null,
+                    ]}
+                    value={editFirstName}
+                    onChangeText={(text) => {
+                      setEditFirstName(text);
+                      if (firstNameError) setFirstNameError('');
+                    }}
+                    placeholder="First Name"
+                    placeholderTextColor={colors.placeholderGray}
+                  />
+                  {!!firstNameError && (
+                    <Text style={sharedStyles.fieldErrorText}>{firstNameError}</Text>
+                  )}
+                </View>
+
+                <View style={[sharedStyles.inputContainer, { marginTop: 12 }]}>
+                  <TextInput
+                    style={[
+                      styles.modalInput,
+                      lastNameError ? sharedStyles.inputError : null,
+                    ]}
+                    value={editLastName}
+                    onChangeText={(text) => {
+                      setEditLastName(text);
+                      if (lastNameError) setLastNameError('');
+                    }}
+                    placeholder="Last Name"
+                    placeholderTextColor={colors.placeholderGray}
+                  />
+                  {!!lastNameError && (
+                    <Text style={sharedStyles.fieldErrorText}>{lastNameError}</Text>
+                  )}
+                </View>
               </>
             ) : (
-              <TextInput
-                style={styles.modalInput}
-                value={editSingleValue}
-                onChangeText={setEditSingleValue}
-                placeholder={`Enter ${activeField?.label}`}
-                placeholderTextColor={colors.placeholderGray}
-                autoCapitalize="none"
-              />
+              <View style={sharedStyles.inputContainer}>
+                <TextInput
+                  style={[
+                    styles.modalInput,
+                    singleFieldError ? sharedStyles.inputError : null,
+                  ]}
+                  value={editSingleValue}
+                  onChangeText={(text) => {
+                    setEditSingleValue(text);
+                    if (singleFieldError) setSingleFieldError('');
+                  }}
+                  placeholder={`Enter ${activeField?.label}`}
+                  placeholderTextColor={colors.placeholderGray}
+                  autoCapitalize="none"
+                />
+                {!!singleFieldError && (
+                  <Text style={sharedStyles.fieldErrorText}>{singleFieldError}</Text>
+                )}
+              </View>
             )}
 
             <View style={styles.modalActions}>
@@ -362,11 +547,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 28,
   },
-  avatar: {
+  // Add/update wrapper styling for the image touchable area
+  avatarWrapper: {
     width: 96,
     height: 96,
     borderRadius: 48,
+    overflow: 'hidden', // Prevents child elements/overlays from leaking outside the circle
     marginBottom: 10,
+    position: 'relative',
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
   },
   avatarPlaceholder: {
     backgroundColor: '#EAEFEF',
@@ -375,7 +567,6 @@ const styles = StyleSheet.create({
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFill,
-    borderRadius: 48,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -504,4 +695,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  progressContainer: { marginTop: 24 },
+  progressText: { fontSize: 14, color: colors.primaryBlue, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  progressBarBg: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: colors.primaryBlue, },
+//   progressContainer: {
+//     width: '100%',
+//     marginTop: 12,
+//     paddingHorizontal: 20,
+//   },
+//   progressText: {
+//     fontSize: 13,
+//     color: colors.primaryBlue,
+//     fontWeight: '600',
+//     marginBottom: 6,
+//     textAlign: 'center',
+//   },
+//   progressBarBg: {
+//     height: 6,
+//     backgroundColor: '#E2E8F0',
+//     borderRadius: 3,
+//     overflow: 'hidden',
+//   },
 });
