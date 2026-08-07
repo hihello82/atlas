@@ -112,7 +112,7 @@ export const sharedStyles = StyleSheet.create({
     // Login, UsernameOnboarding, SignUp (majority values below)
     fontSize: 28,
     fontFamily: 'Playfair Display',
-    letterSpacing: 1,
+    letterSpacing: 0.7,
     color: colors.titleDark,
     fontWeight: '700',
     marginBottom: 8,
