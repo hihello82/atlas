@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { doc, getDoc, getFirestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, getFirestore } from 'firebase/firestore'; // Added collection and getDocs
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -43,45 +43,135 @@ export default function ProfileScreen() {
   const auth = getAuth();
   const db = getFirestore();
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const user = auth.currentUser;
-        if (user) {
-          const userDocRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(userDocRef);
+const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
-          if (docSnap.exists()) {
-            setUserData(docSnap.data() as UserData);
-          } else {
-            setUserData({
-              uid: user.uid,
-              username: user.email ? user.email.split('@')[0] : '',
-              firstName: user.displayName ? user.displayName.split(' ')[0] : 'Traveler',
-              lastName: user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '',
-              profilePhoto: user.photoURL || null,
-              stats: {
-                countriesVisited: 0,
-                citiesVisited: 0,
-                continentsVisited: 0,
-                trips: 0,
-              },
-              social: {
-                followers: 0,
-                following: 0,
-              },
-            });
-          }
+useEffect(() => {
+  const fetchUserData = async () => {
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const docSnap = await getDoc(userDocRef);
+
+        if (docSnap.exists()) {
+          setUserData(docSnap.data() as UserData);
+        } else {
+          setUserData({
+            uid: user.uid,
+            username: user.email ? user.email.split('@')[0] : '',
+            firstName: user.displayName ? user.displayName.split(' ')[0] : 'Traveler',
+            lastName: user.displayName ? user.displayName.split(' ').slice(1).join(' ') : '',
+            profilePhoto: user.photoURL || null,
+            stats: {
+              countriesVisited: 0,
+              citiesVisited: 0,
+              continentsVisited: 0,
+              trips: 0,
+            },
+            social: {
+              followers: 0,
+              following: 0,
+            },
+          });
         }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      } finally {
-        setFetchingData(false);
-      }
-    };
 
-    fetchUserData();
-  }, []);
+        // Fetch Recent Activities
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const activities: any[] = [];
+
+        // Fetch Visited Countries
+        const countriesRef = collection(db, 'users', user.uid, 'countries');
+        const countriesSnap = await getDocs(countriesRef);
+        
+        countriesSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          const recentDate = data.recentArrival || data.firstVisited || data.arrivalDate;
+          const endDate = data.lastVisited || data.departureDate;
+          
+          if (recentDate) {
+            const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
+            if (jsDate >= sixMonthsAgo) {
+              activities.push({
+                id: `country-${docSnap.id}`,
+                title: `Visited ${data.countryName || docSnap.id}`,
+                location: data.countryName || docSnap.id,
+                dateObj: jsDate,
+                dateString: formatDateRange(recentDate, endDate),
+                image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80',
+              });
+            }
+          }
+        });
+
+        // Fetch Trips
+        const tripsRef = collection(db, 'users', user.uid, 'trips');
+        const tripsSnap = await getDocs(tripsRef);
+
+        tripsSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          const startDate = data.startDate;
+          const endDate = data.endDate;
+
+          if (startDate) {
+            const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
+            if (jsDate >= sixMonthsAgo) {
+              activities.push({
+                id: `trip-${docSnap.id}`,
+                title: data.title || 'Trip',
+                location: data.countries?.join(', ') || 'Multiple Locations',
+                dateObj: jsDate,
+                dateString: formatDateRange(startDate, endDate),
+                image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
+              });
+            }
+          }
+        });
+
+        activities.sort((a, b) => b.dateObj - a.dateObj);
+        setRecentActivities(activities);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setFetchingData(false);
+    }
+  };
+
+  fetchUserData();
+}, []);
+
+const getOrdinal = (n: number) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+const formatDateRange = (start: any, end: any) => {
+  if (!start) return '';
+  const startDate = start.toDate ? start.toDate() : new Date(start);
+  const endDate = end ? (end.toDate ? end.toDate() : new Date(end)) : null;
+
+  const startMonth = startDate.toLocaleString('en-US', { month: 'long' });
+  const startDay = getOrdinal(startDate.getDate());
+  const startYear = startDate.getFullYear();
+
+  if (!endDate || startDate.getTime() === endDate.getTime()) {
+    return `${startMonth} ${startDay} ${startYear}`;
+  }
+
+  const endMonth = endDate.toLocaleString('en-US', { month: 'long' });
+  const endDay = getOrdinal(endDate.getDate());
+  const endYear = endDate.getFullYear();
+
+  if (startYear !== endYear) {
+    return `${startMonth} ${startDay} ${startYear} - ${endMonth} ${endDay} ${endYear}`;
+  } else if (startMonth !== endMonth) {
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay} ${startYear}`;
+  } else {
+    return `${startMonth} ${startDay} - ${endDay} ${startYear}`;
+  }
+};
 
   const handleShareProfile = () => {
     console.log('Share Profile Pressed');
@@ -263,6 +353,30 @@ export default function ProfileScreen() {
             <Text style={styles.secondaryButtonText}>Achievements</Text>
           </Pressable>
         </View>
+
+        {/* Recent Activity */}
+        <View style={styles.recentActivityContainer}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          
+          {recentActivities.length > 0 ? (
+            recentActivities.map((activity) => (
+              <Pressable key={activity.id} style={styles.activityCard}>
+                <Image source={{ uri: activity.image }} style={styles.activityImage} />
+                <View style={styles.activityInfo}>
+                  <View style={styles.activityLocation}>
+                    <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
+                    <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
+                  </View>
+                  <Text style={styles.dateText}>{activity.dateString}</Text>
+                </View>
+              </Pressable>
+            ))
+          ) : (
+            <View style={styles.emptyActivityContainer}>
+              <Text style={styles.emptyActivityText}>No activity within the past 6 months</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -322,4 +436,17 @@ const styles = StyleSheet.create({
   secondaryButtonsRow: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 20 },
   secondaryButton: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.white, borderColor: colors.borderLight, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { fontSize: 14, fontWeight: '600', color: colors.titleDark },
+
+  /* Recent Activity Styling */
+  recentActivityContainer: { width: '100%', marginTop: 10 },
+  sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: '#0D1B2A', marginBottom: 15, textAlign: 'left' },
+  activityCard: { backgroundColor: colors.white, borderRadius: 16, padding: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.borderLight, marginBottom: 15 },
+  activityImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15 },
+  activityInfo: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activityLocation: { flex: 1 },
+  countryText: { fontSize: 16, fontWeight: 'bold', color: '#1a1a24', marginBottom: 4 },
+  cityText: { fontSize: 14, color: '#666' },
+  dateText: { fontSize: 13, color: '#999' },
+  emptyActivityContainer: { paddingVertical: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.borderLight },
+  emptyActivityText: { fontSize: 15, color: '#95a5a6', fontWeight: '500' },
 });

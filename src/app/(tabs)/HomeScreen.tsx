@@ -6,7 +6,6 @@ import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -403,29 +402,6 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>Continents</Text>
           </View>
         </View>
-
-        {/* RECENT ACTIVITY */}
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        
-        {recentActivities.length > 0 ? (
-          recentActivities.map((activity) => (
-            <TouchableOpacity key={activity.id} style={styles.activityCard}>
-              <Image source={{ uri: activity.image }} style={styles.activityImage} />
-              <View style={styles.activityInfo}>
-                <View style={styles.activityLocation}>
-                  <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
-                  <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
-                </View>
-                <Text style={styles.dateText}>{activity.dateString}</Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        ) : (
-          <View style={styles.emptyActivityContainer}>
-            <Text style={styles.emptyActivityText}>No activity within the past 6 months</Text>
-          </View>
-        )}
-
       </ScrollView>
     </SafeAreaView>
   );
