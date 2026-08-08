@@ -5,7 +5,12 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import {
+    doc,
+    getDoc,
+    updateDoc,
+    writeBatch
+} from 'firebase/firestore';
 import { deleteObject, getDownloadURL, getStorage, listAll, ref, uploadBytesResumable } from 'firebase/storage';
 import { useEffect, useState } from 'react';
 import {
@@ -204,6 +209,7 @@ export default function EditProfileScreen() {
     }
   };
 
+// REPLACE THE saveField FUNCTION IN editProfile.tsx
   const saveField = async () => {
     if (!userId || !activeField) return;
 
@@ -212,42 +218,77 @@ export default function EditProfileScreen() {
     setLastNameError('');
     setSingleFieldError('');
 
+    const currentFirstName = userData.firstName || '';
+    const currentLastName = userData.lastName || '';
+
     // 1. Name Field Validation
     if (activeField.key === 'name') {
+      const trimmedFirst = editFirstName.trim();
+      const trimmedLast = editLastName.trim();
       let hasError = false;
-      if (!editFirstName.trim()) {
+
+      // First Name validation
+      if (!trimmedFirst) {
         setFirstNameError("Field can't be empty.");
         hasError = true;
-      }
-      if (!editLastName.trim()) {
-        setLastNameError("Field can't be empty.");
+      } else if (trimmedFirst === currentFirstName) {
+        setFirstNameError("New first name can't be the same as before.");
         hasError = true;
       }
+
+      // Last Name validation
+      if (!trimmedLast) {
+        setLastNameError("Field can't be empty.");
+        hasError = true;
+      } else if (trimmedLast === currentLastName) {
+        setLastNameError("New last name can't be the same as before.");
+        hasError = true;
+      }
+
       if (hasError) return;
     }
 
-    // 2. Single Value / Username Field Validation
+    // 2. Single Field Validation (Username, Home City, Instagram, TikTok)
     if (activeField.key !== 'name') {
       const trimmedValue = editSingleValue.trim();
+      const previousValue = (userData[activeField.key as keyof UserData] || '') as string;
+
+      // Empty check
       if (!trimmedValue) {
         setSingleFieldError("Field can't be empty.");
         return;
       }
 
+      // Unchanged value check
+      const isUnchanged =
+        activeField.key === 'username'
+          ? trimmedValue.toLowerCase() === previousValue.toLowerCase()
+          : trimmedValue === previousValue;
+
+      if (isUnchanged) {
+        setSingleFieldError(`${activeField.label} can't be the same as before.`);
+        return;
+      }
+
+      // Unique Username Check in Firestore
       if (activeField.key === 'username') {
         setSaving(true);
         try {
-          const usernamesRef = collection(db, 'usernames');
-          const q = query(usernamesRef, where('username', '==', trimmedValue.toLowerCase()));
-          const querySnapshot = await getDocs(q);
+          const usernameDocRef = doc(db, 'usernames', trimmedValue.toLowerCase());
+          const usernameSnap = await getDoc(usernameDocRef);
 
-          if (!querySnapshot.empty && trimmedValue.toLowerCase() !== userData.username?.toLowerCase()) {
+          if (
+            usernameSnap.exists() &&
+            trimmedValue.toLowerCase() !== previousValue.toLowerCase()
+          ) {
             setSingleFieldError('This username is already taken. Please choose another.');
             setSaving(false);
             return;
           }
         } catch (err) {
           console.error('Error checking username:', err);
+          setSaving(false);
+          return;
         }
       }
     }
@@ -255,21 +296,48 @@ export default function EditProfileScreen() {
     setSaving(true);
     try {
       const userRef = doc(db, 'users', userId);
-      let updates: Partial<UserData> = {};
 
-      if (activeField.key === 'name') {
-        updates = {
-          firstName: editFirstName.trim(),
-          lastName: editLastName.trim(),
-        };
+      if (activeField.key === 'username') {
+        const newUsername = editSingleValue.trim();
+        const oldUsername = userData.username;
+
+        const batch = writeBatch(db);
+
+        // Update user profile
+        batch.update(userRef, { username: newUsername });
+
+        // Create new username mapping
+        const newUsernameDocRef = doc(db, 'usernames', newUsername.toLowerCase());
+        batch.set(newUsernameDocRef, {
+          uid: userId,
+        });
+
+        // Delete old username mapping
+        if (oldUsername && oldUsername.toLowerCase() !== newUsername.toLowerCase()) {
+          const oldUsernameDocRef = doc(db, 'usernames', oldUsername.toLowerCase());
+          batch.delete(oldUsernameDocRef);
+        }
+
+        await batch.commit();
+        setUserData((prev) => ({ ...prev, username: newUsername }));
       } else {
-        updates = {
-          [activeField.key]: editSingleValue.trim(),
-        };
+        let updates: Partial<UserData> = {};
+
+        if (activeField.key === 'name') {
+          updates = {
+            firstName: editFirstName.trim(),
+            lastName: editLastName.trim(),
+          };
+        } else {
+          updates = {
+            [activeField.key]: editSingleValue.trim(),
+          };
+        }
+
+        await updateDoc(userRef, updates);
+        setUserData((prev) => ({ ...prev, ...updates }));
       }
 
-      await updateDoc(userRef, updates);
-      setUserData((prev) => ({ ...prev, ...updates }));
       setActiveField(null);
     } catch (error) {
       console.error('Error updating field:', error);
