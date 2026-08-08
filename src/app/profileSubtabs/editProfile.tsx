@@ -1,18 +1,9 @@
-// REPLACE THE IMPORTS AT THE TOP OF editProfile.tsx WITH:
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { getAuth } from 'firebase/auth';
-import {
-    doc,
-    getDoc,
-    updateDoc,
-    writeBatch
-} from 'firebase/firestore';
-import { deleteObject, getDownloadURL, getStorage, listAll, ref, uploadBytesResumable } from 'firebase/storage';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -26,72 +17,52 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../../config/firebaseConfig';
+// NOTE: adjust this relative path to match where UserContext.tsx lives in your project.
+import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
-
-interface UserData {
-  firstName?: string;
-  lastName?: string;
-  username?: string;
-  homeCity?: string;
-  instagram?: string;
-  tiktok?: string;
-  profilePhoto?: string;
-}
-
-// REPLACE THE TOP OF EditProfileScreen FUNCTION WITH:
+ 
+// Fields on the /users/{uid} doc this screen edits through the inline modal.
+// (profilePhoto is handled separately via the avatar picker, not the modal.)
+type EditableField = 'username' | 'homeCity' | 'instagram' | 'tiktok';
+ 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const auth = getAuth();
-  const userId = auth.currentUser?.uid;
-
-  const [loading, setLoading] = useState(true);
-  const [userData, setUserData] = useState<UserData>({});
+ 
+  // All reads/writes to /users/{uid} and userUploads/{uid}/ go through
+  // UserContext now - this screen no longer touches Firestore or Storage
+  // directly at all.
+  const {
+    userProfile,
+    loading: profileLoading,
+    updateUserProfileFields,
+    updateUsername,
+    uploadProfilePhoto,
+  } = useUser();
+ 
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-
-  // ADD TO THE TOP OF EditProfileScreen FUNCTION (WITH OTHER STATES):
+ 
   const [firstNameError, setFirstNameError] = useState('');
   const [lastNameError, setLastNameError] = useState('');
   const [singleFieldError, setSingleFieldError] = useState('');
-
+ 
   // Edit Modal States
   const [activeField, setActiveField] = useState<{
-    key: keyof UserData | 'name';
+    key: EditableField | 'name';
     label: string;
   } | null>(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editSingleValue, setEditSingleValue] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetchUserData();
-  }, [userId]);
-
-  const fetchUserData = async () => {
-    if (!userId) return;
-    try {
-      const userRef = doc(db, 'users', userId);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        setUserData(snap.data() as UserData);
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-// REPLACE handlePickImage AND uploadProfileImage WITH:
+ 
   const handlePickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       Alert.alert('Permission Required', 'Permission to access camera roll is required!');
       return;
     }
-
+ 
     // Interactive Crop UI (Zoom/Move) via allowsEditing: true & 1:1 aspect ratio
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -99,15 +70,15 @@ export default function EditProfileScreen() {
       aspect: [1, 1],
       quality: 1,
     });
-
+ 
     // If canceled during photo selection or cropping UI, do not proceed with upload
-    if (!result.canceled && result.assets[0] && userId) {
+    if (!result.canceled && result.assets[0]) {
       setUploadingImage(true);
       setUploadProgress(0);
-
+ 
       try {
         const asset = result.assets[0];
-
+ 
         // 1. Calculate dimensions to scale newly cropped image down to max 400x400px
         let resizeAction = {};
         if (asset.width > asset.height) {
@@ -115,14 +86,14 @@ export default function EditProfileScreen() {
         } else {
           resizeAction = { height: Math.min(400, asset.height) };
         }
-
+ 
         let quality = 0.8;
         let manipResult = await ImageManipulator.manipulateAsync(
           asset.uri,
           [{ resize: resizeAction }],
           { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
         );
-
+ 
         // 2. Iteratively reduce quality until cropped file size is under 100KB (102,400 bytes)
         let fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
         while (fileInfo.exists && fileInfo.size && fileInfo.size > 102400 && quality > 0.1) {
@@ -134,93 +105,46 @@ export default function EditProfileScreen() {
           );
           fileInfo = await FileSystem.getInfoAsync(manipResult.uri);
         }
-
-        await uploadProfileImage(manipResult.uri);
+ 
+        // 3. Hand off to UserContext: it deletes the old profile picture,
+        // uploads the new one to userUploads/{uid}/, and writes the
+        // resulting URL to /users/{uid}.profilePhoto.
+        await uploadProfilePhoto(manipResult.uri, setUploadProgress);
       } catch (error) {
-        console.error('Error processing image:', error);
-        Alert.alert('Error', 'Failed to process image.');
+        console.error('Error uploading image:', error);
+        Alert.alert('Error', 'Failed to upload photo. Please try again.');
+      } finally {
         setUploadingImage(false);
+        setUploadProgress(0);
       }
     }
   };
-
-  const uploadProfileImage = async (uri: string) => {
-    if (!userId) return;
-    const storage = getStorage();
-    try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      // Check for pre-existing files starting with "profilepicture" in /userUploads/uID/
-      const folderRef = ref(storage, `userUploads/${userId}`);
-      const folderList = await listAll(folderRef);
-      const existingProfilePics = folderList.items.filter((item) =>
-        item.name.startsWith('profilepicture')
-      );
-
-      // Delete existing profile pictures before uploading the new crop
-      await Promise.all(
-        existingProfilePics.map((fileRef) => deleteObject(fileRef).catch(() => {}))
-      );
-
-      // Upload newly cropped & compressed image prefixing file name with "profilepicture"
-      const fileName = `profilepicture_${Date.now()}.jpg`;
-      const imageRef = ref(storage, `userUploads/${userId}/${fileName}`);
-      const uploadTask = uploadBytesResumable(imageRef, blob);
-
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(progress);
-          },
-          (error) => reject(error),
-          async () => {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            const userRef = doc(db, 'users', userId);
-            await updateDoc(userRef, { profilePhoto: downloadURL });
-            setUserData((prev) => ({ ...prev, profilePhoto: downloadURL }));
-            resolve();
-          }
-        );
-      });
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      Alert.alert('Error', 'Failed to upload photo. Please try again.');
-    } finally {
-      setUploadingImage(false);
-      setUploadProgress(0);
-    }
-  };
-
-// REPLACE openEditModal AND saveField WITH:
-  const openEditModal = (key: keyof UserData | 'name', label: string) => {
+ 
+  const openEditModal = (key: EditableField | 'name', label: string) => {
     setActiveField({ key, label });
     setFirstNameError('');
     setLastNameError('');
     setSingleFieldError('');
-
+ 
     if (key === 'name') {
-      setEditFirstName(userData.firstName || '');
-      setEditLastName(userData.lastName || '');
+      setEditFirstName(userProfile?.firstName || '');
+      setEditLastName(userProfile?.lastName || '');
     } else {
-      setEditSingleValue(userData[key] || '');
+      setEditSingleValue(userProfile?.[key] || '');
     }
   };
-
-// REPLACE THE saveField FUNCTION IN editProfile.tsx
+ 
   const saveField = async () => {
-    if (!userId || !activeField) return;
-
+    if (!activeField) return;
+ 
     // Reset error states
     setFirstNameError('');
     setLastNameError('');
     setSingleFieldError('');
-
-    const currentFirstName = userData.firstName || '';
-    const currentLastName = userData.lastName || '';
-
+ 
+    const currentFirstName = userProfile?.firstName || '';
+    const currentLastName = userProfile?.lastName || '';
+ 
     // 1. Name Field Validation
     if (activeField.key === 'name') {
       const trimmedFirst = editFirstName.trim();
@@ -231,113 +155,68 @@ export default function EditProfileScreen() {
       if (!trimmedFirst) {
         setFirstNameError("Field can't be empty.");
         hasError = true;
-      } else if (trimmedFirst === currentFirstName) {
-        setFirstNameError("New first name can't be the same as before.");
-        hasError = true;
-      }
-
+      } 
+ 
       // Last Name validation
       if (!trimmedLast) {
         setLastNameError("Field can't be empty.");
         hasError = true;
-      } else if (trimmedLast === currentLastName) {
-        setLastNameError("New last name can't be the same as before.");
+      } 
+
+      if(trimmedFirst === currentFirstName && trimmedLast === currentLastName){
+        setFirstNameError("New name can't be the same as before.");
+        setLastNameError("New name can't be the same as before.");
         hasError = true;
       }
-
+ 
       if (hasError) return;
     }
-
+ 
     // 2. Single Field Validation (Username, Home City, Instagram, TikTok)
     if (activeField.key !== 'name') {
       const trimmedValue = editSingleValue.trim();
-      const previousValue = (userData[activeField.key as keyof UserData] || '') as string;
-
+      const previousValue = (userProfile?.[activeField.key] || '') as string;
+ 
       // Empty check
       if (!trimmedValue) {
         setSingleFieldError("Field can't be empty.");
         return;
       }
-
+ 
       // Unchanged value check
       const isUnchanged =
         activeField.key === 'username'
           ? trimmedValue.toLowerCase() === previousValue.toLowerCase()
           : trimmedValue === previousValue;
-
+ 
       if (isUnchanged) {
         setSingleFieldError(`${activeField.label} can't be the same as before.`);
         return;
       }
-
-      // Unique Username Check in Firestore
+    }
+ 
+    setSaving(true);
+    try {
       if (activeField.key === 'username') {
-        setSaving(true);
-        try {
-          const usernameDocRef = doc(db, 'usernames', trimmedValue.toLowerCase());
-          const usernameSnap = await getDoc(usernameDocRef);
-
-          if (
-            usernameSnap.exists() &&
-            trimmedValue.toLowerCase() !== previousValue.toLowerCase()
-          ) {
-            setSingleFieldError('This username is already taken. Please choose another.');
-            setSaving(false);
-            return;
-          }
-        } catch (err) {
-          console.error('Error checking username:', err);
+        // UserContext handles the uniqueness check against /usernames/{name}
+        // plus the batched write (user doc + username mapping docs).
+        const result = await updateUsername(editSingleValue.trim());
+        if (!result.success) {
+          setSingleFieldError(result.error || 'Failed to save changes.');
           setSaving(false);
           return;
         }
-      }
-    }
-
-    setSaving(true);
-    try {
-      const userRef = doc(db, 'users', userId);
-
-      if (activeField.key === 'username') {
-        const newUsername = editSingleValue.trim();
-        const oldUsername = userData.username;
-
-        const batch = writeBatch(db);
-
-        // Update user profile
-        batch.update(userRef, { username: newUsername });
-
-        // Create new username mapping
-        const newUsernameDocRef = doc(db, 'usernames', newUsername.toLowerCase());
-        batch.set(newUsernameDocRef, {
-          uid: userId,
+      } else if (activeField.key === 'name') {
+        await updateUserProfileFields({
+          firstName: editFirstName.trim(),
+          lastName: editLastName.trim(),
         });
-
-        // Delete old username mapping
-        if (oldUsername && oldUsername.toLowerCase() !== newUsername.toLowerCase()) {
-          const oldUsernameDocRef = doc(db, 'usernames', oldUsername.toLowerCase());
-          batch.delete(oldUsernameDocRef);
-        }
-
-        await batch.commit();
-        setUserData((prev) => ({ ...prev, username: newUsername }));
       } else {
-        let updates: Partial<UserData> = {};
-
-        if (activeField.key === 'name') {
-          updates = {
-            firstName: editFirstName.trim(),
-            lastName: editLastName.trim(),
-          };
-        } else {
-          updates = {
-            [activeField.key]: editSingleValue.trim(),
-          };
-        }
-
-        await updateDoc(userRef, updates);
-        setUserData((prev) => ({ ...prev, ...updates }));
+        await updateUserProfileFields({
+          [activeField.key]: editSingleValue.trim(),
+        });
       }
-
+ 
       setActiveField(null);
     } catch (error) {
       console.error('Error updating field:', error);
@@ -346,17 +225,17 @@ export default function EditProfileScreen() {
       setSaving(false);
     }
   };
-
-  const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
-
-  if (loading) {
+ 
+  const fullName = `${userProfile?.firstName || ''} ${userProfile?.lastName || ''}`.trim();
+ 
+  if (profileLoading) {
     return (
       <View style={[sharedStyles.appContainer, styles.center]}>
         <ActivityIndicator size="large" color={colors.titleDark} />
       </View>
     );
   }
-
+ 
   return (
     <SafeAreaView style={sharedStyles.appContainer}>
       <View style={{ paddingHorizontal: 24 }}>
@@ -370,11 +249,11 @@ export default function EditProfileScreen() {
             <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
           </TouchableOpacity>
         </View>
-
+ 
         {/* Title */}
         <Text style={[sharedStyles.title, { marginTop: 16 }]}>Edit Profile</Text>
       </View>
-
+ 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile Picture Section */}
         <View style={styles.avatarSection}>
@@ -384,8 +263,8 @@ export default function EditProfileScreen() {
             activeOpacity={0.8} 
             disabled={uploadingImage}
         >
-            {userData.profilePhoto ? (
-            <Image source={{ uri: userData.profilePhoto }} style={styles.avatar} />
+            {userProfile?.profilePhoto ? (
+            <Image source={{ uri: userProfile.profilePhoto }} style={styles.avatar} />
             ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
                 <Ionicons name="person" size={48} color={colors.placeholderGray} />
@@ -397,13 +276,13 @@ export default function EditProfileScreen() {
             </View>
             )}
         </TouchableOpacity>
-
+ 
         <TouchableOpacity onPress={handlePickImage} activeOpacity={0.7} disabled={uploadingImage}>
             <Text style={styles.editPhotoText}>
             {uploadingImage ? 'Uploading photo...' : 'Upload profile photo'}
             </Text>
         </TouchableOpacity>
-
+ 
         {/* Upload Progress Bar */}
         {uploadingImage && (
             <View style={styles.progressContainer}>
@@ -414,7 +293,7 @@ export default function EditProfileScreen() {
             </View>
         )}
         </View>
-
+ 
         {/* Profile Details Group Box */}
         <View style={styles.cardGroup}>
           {/* Name Field */}
@@ -429,9 +308,9 @@ export default function EditProfileScreen() {
               <Ionicons name="pencil-sharp" size={14} color="#8E9AA0" style={styles.pencilIcon} />
             </View>
           </TouchableOpacity>
-
+ 
           <View style={styles.divider} />
-
+ 
           {/* Username Field */}
           <TouchableOpacity
             style={styles.fieldRow}
@@ -441,14 +320,14 @@ export default function EditProfileScreen() {
             <Text style={styles.fieldLabel}>Username</Text>
             <View style={styles.fieldValueContainer}>
               <Text style={styles.fieldValue}>
-                {userData.username ? `@${userData.username}` : 'Set username'}
+                {userProfile?.username ? `@${userProfile.username}` : 'Set username'}
               </Text>
               <Ionicons name="pencil-sharp" size={14} color="#8E9AA0" style={styles.pencilIcon} />
             </View>
           </TouchableOpacity>
-
+ 
           <View style={styles.divider} />
-
+ 
           {/* Home City Field */}
           <TouchableOpacity
             style={styles.fieldRow}
@@ -457,15 +336,15 @@ export default function EditProfileScreen() {
           >
             <Text style={styles.fieldLabel}>Home City</Text>
             <View style={styles.fieldValueContainer}>
-              <Text style={[styles.fieldValue, !userData.homeCity && styles.placeholderText]}>
-                {userData.homeCity || 'Set home city'}
+              <Text style={[styles.fieldValue, !userProfile?.homeCity && styles.placeholderText]}>
+                {userProfile?.homeCity || 'Set home city'}
               </Text>
               <Ionicons name="pencil-sharp" size={14} color="#8E9AA0" style={styles.pencilIcon} />
             </View>
           </TouchableOpacity>
-
+ 
           <View style={styles.divider} />
-
+ 
           {/* Instagram Field */}
           <TouchableOpacity
             style={styles.fieldRow}
@@ -474,13 +353,13 @@ export default function EditProfileScreen() {
           >
             <Text style={styles.fieldLabel}>Instagram</Text>
             <View style={styles.fieldValueContainer}>
-              <Text style={styles.fieldValue}>{userData.instagram || ''}</Text>
+              <Text style={styles.fieldValue}>{userProfile?.instagram || ''}</Text>
               <Ionicons name="pencil-sharp" size={14} color="#8E9AA0" style={styles.pencilIcon} />
             </View>
           </TouchableOpacity>
-
+ 
           <View style={styles.divider} />
-
+ 
           {/* TikTok Field */}
           <TouchableOpacity
             style={styles.fieldRow}
@@ -489,12 +368,12 @@ export default function EditProfileScreen() {
           >
             <Text style={styles.fieldLabel}>TikTok</Text>
             <View style={styles.fieldValueContainer}>
-              <Text style={styles.fieldValue}>{userData.tiktok || ''}</Text>
+              <Text style={styles.fieldValue}>{userProfile?.tiktok || ''}</Text>
               <Ionicons name="pencil-sharp" size={14} color="#8E9AA0" style={styles.pencilIcon} />
             </View>
           </TouchableOpacity>
         </View>
-
+ 
         {/* Account Settings Redirection Row */}
         <TouchableOpacity
           style={styles.accountSettingsButton}
@@ -505,13 +384,13 @@ export default function EditProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={colors.titleDark} />
         </TouchableOpacity>
       </ScrollView>
-
+ 
       {/* Inline Edit Modal */}
       <Modal visible={!!activeField} animationType="fade" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit {activeField?.label}</Text>
-
+ 
             {activeField?.key === 'name' ? (
               <>
                 <View style={sharedStyles.inputContainer}>
@@ -532,7 +411,7 @@ export default function EditProfileScreen() {
                     <Text style={sharedStyles.fieldErrorText}>{firstNameError}</Text>
                   )}
                 </View>
-
+ 
                 <View style={[sharedStyles.inputContainer, { marginTop: 12 }]}>
                   <TextInput
                     style={[
@@ -573,7 +452,7 @@ export default function EditProfileScreen() {
                 )}
               </View>
             )}
-
+ 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelButton}
@@ -581,7 +460,7 @@ export default function EditProfileScreen() {
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
-
+ 
               <TouchableOpacity
                 style={styles.modalSaveButton}
                 onPress={saveField}
@@ -600,7 +479,7 @@ export default function EditProfileScreen() {
     </SafeAreaView>
   );
 }
-
+ 
 const styles = StyleSheet.create({
   center: {
     justifyContent: 'center',
@@ -767,22 +646,4 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 14, color: colors.primaryBlue, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
   progressBarBg: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: colors.primaryBlue, },
-//   progressContainer: {
-//     width: '100%',
-//     marginTop: 12,
-//     paddingHorizontal: 20,
-//   },
-//   progressText: {
-//     fontSize: 13,
-//     color: colors.primaryBlue,
-//     fontWeight: '600',
-//     marginBottom: 6,
-//     textAlign: 'center',
-//   },
-//   progressBarBg: {
-//     height: 6,
-//     backgroundColor: '#E2E8F0',
-//     borderRadius: 3,
-//     overflow: 'hidden',
-//   },
 });

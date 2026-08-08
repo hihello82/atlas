@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { useRouter } from 'expo-router';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,10 +14,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { auth, db } from '../../../config/firebaseConfig';
+import { db } from '../../../config/firebaseConfig';
+import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
 
-// Import your GeoJSON data
 import geoJsonData from '../../../assets/custom.geo.json';
 
 export interface CountryResult {
@@ -32,154 +31,21 @@ export interface CountryResult {
   flags?: { png: string; svg: string; alt?: string };
 }
 
-// Target SVG Dimensions
 const MAP_WIDTH = 360;
 const MAP_HEIGHT = 210;
-
-// Date Formatter Helper
-const getOrdinal = (n: number) => {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-};
-
-const formatDateRange = (start: any, end: any) => {
-  if (!start) return '';
-  const startDate = start.toDate ? start.toDate() : new Date(start);
-  const endDate = end ? (end.toDate ? end.toDate() : new Date(end)) : null;
-
-  const startMonth = startDate.toLocaleString('en-US', { month: 'long' });
-  const startDay = getOrdinal(startDate.getDate());
-  const startYear = startDate.getFullYear();
-
-  if (!endDate || startDate.getTime() === endDate.getTime()) {
-    return `${startMonth} ${startDay} ${startYear}`;
-  }
-
-  const endMonth = endDate.toLocaleString('en-US', { month: 'long' });
-  const endDay = getOrdinal(endDate.getDate());
-  const endYear = endDate.getFullYear();
-
-  if (startYear !== endYear) {
-    return `${startMonth} ${startDay} ${startYear} - ${endMonth} ${endDay} ${endYear}`;
-  } else if (startMonth !== endMonth) {
-    return `${startMonth} ${startDay} - ${endMonth} ${endDay} ${startYear}`;
-  } else {
-    return `${startMonth} ${startDay} - ${endDay} ${startYear}`;
-  }
-};
 
 export default function HomeScreen() {
   const router = useRouter();
 
-  const [userProfile, setUserProfile] = useState<any>(null);
-  
-  // Dynamic State variables
-  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
-  const [exploredPercentage, setExploredPercentage] = useState<string>("0.00");
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  // Pull profile state and visited map data directly from UserContext
+  const { userProfile, visitedCountryCodes, exploredPercentage } = useUser();
 
   // Search variables
   const [searchQuery, setSearchQuery] = useState('');
   const [allCountries, setAllCountries] = useState<CountryResult[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          // 1. Fetch User Profile
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            setUserProfile(userDocSnap.data());
-          } else {
-            setUserProfile({
-              firstName: user.displayName?.split(' ')[0] || 'Traveler',
-              lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-            });
-          }
-
-          // 2. Compute 6 months ago threshold
-          const sixMonthsAgo = new Date();
-          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-          const activities: any[] = [];
-          const colors: Record<string, string> = {};
-          let visitedCount = 0;
-
-          // 3. Fetch Visited Countries
-          const countriesRef = collection(db, 'users', user.uid, 'countries');
-          const countriesSnap = await getDocs(countriesRef);
-          
-          countriesSnap.forEach(doc => {
-            const data = doc.data();
-            const cca3 = data.countryCode || doc.id;
-            
-            // Mark country as visited with color
-            colors[cca3] = '#3498db'; 
-            visitedCount++;
-
-            // Check for recent activity in countries
-            const recentDate = data.recentArrival || data.firstVisited || data.arrivalDate;
-            const endDate = data.lastVisited || data.departureDate;
-            
-            if (recentDate) {
-              const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
-              if (jsDate >= sixMonthsAgo) {
-                activities.push({
-                  id: `country-${doc.id}`,
-                  title: `Visited ${data.countryName || doc.id}`,
-                  location: data.countryName || doc.id,
-                  dateObj: jsDate,
-                  dateString: formatDateRange(recentDate, endDate),
-                  image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80', // Default placeholder
-                });
-              }
-            }
-          });
-
-          setCountryColors(colors);
-          setExploredPercentage(((visitedCount / 195) * 100).toFixed(2));
-
-          // 4. Fetch Trips
-          const tripsRef = collection(db, 'users', user.uid, 'trips');
-          const tripsSnap = await getDocs(tripsRef);
-
-          tripsSnap.forEach(doc => {
-            const data = doc.data();
-            const startDate = data.startDate;
-            const endDate = data.endDate;
-
-            if (startDate) {
-              const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
-              if (jsDate >= sixMonthsAgo) {
-                activities.push({
-                  id: `trip-${doc.id}`,
-                  title: data.title || 'Trip',
-                  location: data.countries?.join(', ') || 'Multiple Locations',
-                  dateObj: jsDate,
-                  dateString: formatDateRange(startDate, endDate),
-                  image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
-                });
-              }
-            }
-          });
-
-          // Sort activities by most recent
-          activities.sort((a, b) => b.dateObj - a.dateObj);
-          setRecentActivities(activities);
-
-        } catch (err) {
-          console.error('Error fetching user data:', err);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch ALL countries on component mount for Search functionality
+  // Fetch global country reference data for Search functionality
   useEffect(() => {
     const fetchAllCountries = async () => {
       try {
@@ -192,7 +58,7 @@ export default function HomeScreen() {
           const parsedCountries: CountryResult[] = rawList.map((item: any, index: number) => {
             const commonName = item.name?.common || item.names?.common || '';
             const fallbackCode = `country-${index}-${commonName.replace(/\s+/g, '')}`;
-            
+
             return {
               cca3: item.cca3 && item.cca3.trim() !== '' ? item.cca3 : fallbackCode,
               cca2: item.cca2 || '',
@@ -200,8 +66,8 @@ export default function HomeScreen() {
                 common: commonName,
                 official: item.name?.official || item.names?.official || '',
               },
-              flag: typeof item.flag === 'string' && item.flag.trim() !== '' 
-                ? item.flag 
+              flag: typeof item.flag === 'string' && item.flag.trim() !== ''
+                ? item.flag
                 : (item.flag?.emoji || '🏳️'),
               region: item.region || '',
               capital: Array.isArray(item.capital) ? item.capital : [],
@@ -226,12 +92,11 @@ export default function HomeScreen() {
     fetchAllCountries();
   }, []);
 
-  // Filter countries in real-time based on searchQuery
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase().trim();
     return allCountries
-      .filter((country) => 
+      .filter((country) =>
         country.name.common.toLowerCase().includes(query) ||
         country.cca3.toLowerCase().includes(query) ||
         country.cca2.toLowerCase().includes(query)
@@ -239,7 +104,6 @@ export default function HomeScreen() {
       .slice(0, 7);
   }, [searchQuery, allCountries]);
 
-  // Convert GeoJSON Features to SVG Paths
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
 
@@ -262,24 +126,25 @@ export default function HomeScreen() {
   }, []);
 
   const handleCountrySelect = (item: CountryResult) => {
-    router.push({
-      pathname: '../(countries)/[id]',
-      params: {
-        code: item.cca3,
-        name: item.name.common,
-        flag: item.flag,
-        flagUrl: item.flags?.png || '',
-        region: item.region,
-        capital: item.capital?.[0] || '',
-        population: String(item.population || 0),
-      },
-    });
+      router.push({
+        pathname: '/(countries)/[id]',
+        params: {
+          id: item.cca3,
+          code: item.cca3,
+          name: item.name.common,
+          flag: item.flag,
+          flagUrl: item.flags?.png || '',
+          region: item.region,
+          capital: item.capital?.[0] || '',
+          population: String(item.population || 0),
+        },
+      });
   };
 
   return (
     <SafeAreaView style={sharedStyles.appContainer}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        
+
         {/* HEADER */}
         <View style={styles.headerContainer}>
           <View>
@@ -348,8 +213,8 @@ export default function HomeScreen() {
 
         {/* INTERACTIVE MAP CONTAINER */}
         <View style={styles.mapCard}>
-          <TouchableOpacity 
-            style={styles.mapWrapper} 
+          <TouchableOpacity
+            style={styles.mapWrapper}
             activeOpacity={0.8}
             onPress={() => router.push('/MapScreen')}
           >
@@ -360,7 +225,7 @@ export default function HomeScreen() {
                   <Path
                     key={region.id}
                     d={region.path}
-                    fill={countryColors[region.id] || '#d3d3d3'}
+                    fill={visitedCountryCodes[region.id] || '#d3d3d3'}
                     stroke="#ffffff"
                     strokeWidth="0.5"
                   />
@@ -385,9 +250,9 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>Countries</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.statBox, styles.statBoxGreen]}
-            onPress={() => router.push('../subtabs/Cities')}
+            onPress={() => router.push('/subtabs/Cities')}
           >
             <Text style={[styles.statNumber, styles.textGreen]}>
               {userProfile?.stats?.citiesVisited ?? 0}
@@ -397,7 +262,7 @@ export default function HomeScreen() {
 
           <View style={[styles.statBox, styles.statBoxWhite]}>
             <Text style={styles.statNumber}>
-                {userProfile?.stats?.continentsVisited ?? 0}
+              {userProfile?.stats?.continentsVisited ?? 0}
             </Text>
             <Text style={styles.statLabel}>Continents</Text>
           </View>
@@ -413,8 +278,8 @@ const styles = StyleSheet.create({
   searchInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, height: 48, borderWidth: 1, borderColor: '#e1e8ee' },
   container: { padding: 20, paddingBottom: 40 },
   headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 10 },
-  welcomeText: { fontSize: 16, color: colors.subtitleGray }, // was '#666'
-  nameText: { fontSize: 28, fontFamily: 'Playfair Display', fontWeight: '700', letterSpacing: 0.7, color: colors.titleDark, marginTop: -2 }, // fontWeight aligned to '700'
+  welcomeText: { fontSize: 16, color: colors.subtitleGray },
+  nameText: { fontSize: 28, fontFamily: 'Playfair Display', fontWeight: '700', letterSpacing: 0.7, color: colors.titleDark, marginTop: -2 },
   headerIcons: { flexDirection: 'row', gap: 10 },
   searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 28, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 16, height: 52 },
   searchIcon: { marginRight: 10 },
@@ -441,14 +306,4 @@ const styles = StyleSheet.create({
   textBlue: { color: '#007aff' },
   textGreen: { color: '#34c759' },
   statLabel: { fontSize: 12, color: '#666' },
-  sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: '#0D1B2A', marginBottom: 15 },
-  activityCard: { backgroundColor: '#fff', borderRadius: 16, padding: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#eee', marginBottom: 15 },
-  activityImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15 },
-  activityInfo: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  activityLocation: { flex: 1 },
-  countryText: { fontSize: 16, fontWeight: 'bold', color: '#1a1a24', marginBottom: 4 },
-  cityText: { fontSize: 14, color: '#666' },
-  dateText: { fontSize: 13, color: '#999' },
-  emptyActivityContainer: { paddingVertical: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#eee' },
-  emptyActivityText: { fontSize: 15, color: '#95a5a6', fontWeight: '500' },
 });

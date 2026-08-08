@@ -4,9 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, increment, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
-import { deleteObject, getDownloadURL, getStorage, ref, uploadBytesResumable } from 'firebase/storage';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
     ActivityIndicator,
     Image,
@@ -22,7 +20,7 @@ import { Calendar } from 'react-native-calendars';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../../config/firebaseConfig';
+import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
 
 export default function AddTrip() {
@@ -31,6 +29,8 @@ export default function AddTrip() {
 
   const auth = getAuth();
   const user = auth.currentUser;
+
+  const { userTrips: existingTrips, addTripVisit, uploadUserFile, deleteUserFile } = useUser();
 
   const [loading, setLoading] = useState(false);
   const [tripName, setTripName] = useState('');
@@ -46,7 +46,6 @@ export default function AddTrip() {
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
   // Dropdown Modal State
-  const [existingTrips, setExistingTrips] = useState<any[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string>('new');
   const [showTripPicker, setShowTripPicker] = useState(false);
 
@@ -54,21 +53,6 @@ export default function AddTrip() {
   const [photos, setPhotos] = useState<{ key: string; uri: string; caption: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-
-  useEffect(() => {
-    const fetchTrips = async () => {
-      if (!user) return;
-      try {
-        const tripsRef = collection(db, 'users', user.uid, 'trips');
-        const tripsSnap = await getDocs(tripsRef);
-        const trips = tripsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setExistingTrips(trips);
-      } catch (err) {
-        console.error('Failed to fetch trips:', err);
-      }
-    };
-    fetchTrips();
-  }, [user]);
 
   // Image Picking and Compression
   const handleSelectPhotos = async () => {
@@ -133,57 +117,43 @@ export default function AddTrip() {
   };
 
   // Upload Logic
-  const uploadPhotosToStorage = async (): Promise<{ url: string; caption: string }[]> => {
+    const uploadPhotosToStorage = async (): Promise<{ url: string; caption: string }[]> => {
     if (!user || photos.length === 0) return [];
-    
+
     setIsUploading(true);
     setUploadProgress(0);
-    const storage = getStorage();
     const uploadedResults: { url: string; caption: string }[] = [];
-    const createdRefs: any[] = [];
     const totalCount = photos.length;
 
     try {
-      for (let i = 0; i < photos.length; i++) {
+        for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
-        const response = await fetch(photo.uri);
-        const blob = await response.blob();
-        
-        // Filename format: CountryName_Timestamp_Index.jpg
         const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
         const fileName = `${safeName}_${Date.now()}_${i}.jpg`;
-        const storageRef = ref(storage, `userUploads/${user.uid}/${fileName}`);
-        createdRefs.push(storageRef);
 
-        const uploadTask = uploadBytesResumable(storageRef, blob);
-
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on(
-            'state_changed',
-            (snapshot) => {
-              const currentFileProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
-              setUploadProgress(overallProgress);
-            },
-            (error) => reject(error),
-            async () => {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              uploadedResults.push({ url, caption: photo.caption });
-              resolve();
+        const url = await uploadUserFile(
+            photo.uri,
+            fileName,
+            (currentFileProgress) => {
+            const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
+            setUploadProgress(overallProgress);
             }
-          );
-        });
-      }
+        );
 
-      setIsUploading(false);
-      return uploadedResults;
+        uploadedResults.push({ url, caption: photo.caption });
+        }
+
+        setIsUploading(false);
+        return uploadedResults;
     } catch (error) {
-      // Cleanup uploaded photos if uploading process fails
-      await Promise.all(createdRefs.map((storageRef) => deleteObject(storageRef).catch(() => {})));
-      setIsUploading(false);
-      throw error;
+        // Clean up successfully uploaded photos via context delete handler if operation fails
+        await Promise.all(
+        uploadedResults.map((item) => deleteUserFile(item.url).catch(() => {}))
+        );
+        setIsUploading(false);
+        throw error;
     }
-  };
+    };
 
   const handleDayPress = (day: { dateString: string }) => {
     const dateStr = day.dateString;
@@ -227,108 +197,38 @@ export default function AddTrip() {
     return marked;
   };
 
-  const handleSave = async () => {
-    if (!user || !code) return;
-    setLoading(true);
+const handleSave = async () => {
+  if (!user || !code) return;
+  setLoading(true);
 
-    let uploadedPhotosData: { url: string; caption: string }[] = [];
-    try {
-      // 1. Upload Photos first
-      uploadedPhotosData = await uploadPhotosToStorage();
-      const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
+  let uploadedPhotosData: { url: string; caption: string }[] = [];
+  try {
+    uploadedPhotosData = await uploadPhotosToStorage();
 
-      // 2. Save Data to Firestore
-      const uid = user.uid;
-      const countryRef = doc(db, 'users', uid, 'countries', code);
-      const countrySnap = await getDoc(countryRef);
+    await addTripVisit({
+      code,
+      name,
+      startDate,
+      endDate,
+      tripName,
+      notes,
+      selectedTripId,
+      uploadedPhotosData,
+    });
 
-      const arrivalTimestamp = startDate ? Timestamp.fromDate(new Date(startDate)) : null;
-      const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
-      let targetTripId = selectedTripId;
-
-        // Target the user's main profile document
-      const userDocRef = doc(db, 'users', uid);
-
-      if (countrySnap.exists()) {
-        const existingData = countrySnap.data();
-        await updateDoc(countryRef, {
-          visitCount: increment(1),
-          updatedAt: serverTimestamp(),
-          firstVisited: existingData.firstVisited || arrivalTimestamp,
-          recentArrival: arrivalTimestamp,
-          lastVisited: departureTimestamp || existingData.lastVisited || arrivalTimestamp,
-          photos: [...(existingData.photos || []), ...uploadedPhotosData],
-          coverPhoto: existingData.coverPhoto || coverPhotoURL,
-        });
-      } else {
-        await setDoc(countryRef, {
-          countryCode: code,
-          countryName: name,
-          firstVisited: arrivalTimestamp,
-          recentArrival: arrivalTimestamp,
-          lastVisited: arrivalTimestamp || departureTimestamp,
-          visitCount: 1,
-          photos: uploadedPhotosData,
-          coverPhoto: coverPhotoURL,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-
-        // Increment countriesVisited inside the 'stats' map on the user document
-        await updateDoc(userDocRef, {
-          'stats.countriesVisited': increment(1),
-        });
-      }
-
-      if (selectedTripId === 'new' && tripName.trim() !== '') {
-        const newTripRef = doc(collection(db, 'users', uid, 'trips'));
-        targetTripId = newTripRef.id;
-
-        await setDoc(newTripRef, {
-          title: tripName,
-          description: notes,
-          startDate: arrivalTimestamp,
-          endDate: departureTimestamp,
-          countries: [code],
-          cities: [],
-          photos: uploadedPhotosData,
-          coverPhoto: coverPhotoURL,
-        });
-
-        // Increment trips inside the 'stats' map on the user document
-        await updateDoc(userDocRef, {
-          'stats.trips': increment(1),
-        });
-      }
-
-      if (targetTripId && targetTripId !== 'new') {
-        const cSnap = await getDoc(countryRef);
-        if (cSnap.exists()) {
-          const currentTrips = cSnap.data().tripIds || [];
-          if (!currentTrips.includes(targetTripId)) {
-            await updateDoc(countryRef, { tripIds: [...currentTrips, targetTripId] });
-          }
-        }
-      }
-
-      setLoading(false);
-      router.replace('/HomeScreen');
-    } catch (err) {
-      console.error('Error saving trip:', err);
-      // Clean up uploaded files in Cloud Storage if Firestore fails
-      if (uploadedPhotosData.length > 0) {
-        const storage = getStorage();
-        await Promise.all(
-          uploadedPhotosData.map((p) => {
-            const photoRef = ref(storage, p.url);
-            return deleteObject(photoRef).catch(() => {});
-          })
-        );
-      }
-      setLoading(false);
-      setIsUploading(false);
+    setLoading(false);
+    router.replace('/HomeScreen');
+  } catch (err) {
+    console.error('Error saving trip:', err);
+    if (uploadedPhotosData.length > 0) {
+      await Promise.all(
+        uploadedPhotosData.map((p) => deleteUserFile(p.url).catch(() => {}))
+      );
     }
-  };
+    setLoading(false);
+    setIsUploading(false);
+  }
+};
 
   const selectedTripLabel =
     selectedTripId === 'new'
