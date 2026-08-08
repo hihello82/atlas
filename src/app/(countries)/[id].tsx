@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { getAuth } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
@@ -37,6 +38,19 @@ export default function CountryDetailScreen() {
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  const [countryUserData, setCountryUserData] = useState<{
+    totalDaysVisited: number;
+    tripIds: string[];
+    cities: any[];
+  }>({
+    totalDaysVisited: 0,
+    tripIds: [],
+    cities: [],
+  });
+
   // Check if current country exists in GeoJSON data
   const isCountryInGeoJson = geoJsonData.features.some(
     (feature: any) =>
@@ -62,6 +76,21 @@ export default function CountryDetailScreen() {
 
           setDetails(match || null);
         }
+
+        // Fetch user specific data for this country if user is logged in
+        if (user?.uid) {
+          const userCountryRef = doc(db, 'users', user.uid, 'countries', params.code);
+          const userCountrySnap = await getDoc(userCountryRef);
+
+          if (userCountrySnap.exists()) {
+            const data = userCountrySnap.data();
+            setCountryUserData({
+              totalDaysVisited: data.totalDaysVisited || 0,
+              tripIds: data.tripIds || [],
+              cities: data.cities || [],
+            });
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch country detail from Firestore:', err);
       } finally {
@@ -70,7 +99,7 @@ export default function CountryDetailScreen() {
     };
 
     fetchCountryDetail();
-  }, [params.code]);
+  }, [params.code, user?.uid]);
 
   // Dynamic values
   const countryName = details?.name?.common || params.name || 'Country Name';
@@ -181,21 +210,22 @@ export default function CountryDetailScreen() {
             </TouchableOpacity>
           </View>
         )}
-
         {/* Metric Cards Section */}
         <View style={styles.statsRow}>
           <TouchableOpacity style={[styles.statCard, styles.activeStatCard]} activeOpacity={0.7}>
-            <Text style={[styles.statValue, styles.activeStatText]}>3</Text>
+            <Text style={[styles.statValue, styles.activeStatText]}>
+              {countryUserData.cities.length}
+            </Text>
             <Text style={[styles.statLabel, styles.activeStatText]}>Visited Cities</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
-            <Text style={styles.statValue}>2</Text>
+            <Text style={styles.statValue}>{countryUserData.tripIds.length}</Text>
             <Text style={styles.statLabel}>Total Trips</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
-            <Text style={styles.statValue}>14</Text>
+            <Text style={styles.statValue}>{countryUserData.totalDaysVisited}</Text>
             <Text style={styles.statLabel}>Days Spent</Text>
           </TouchableOpacity>
         </View>
@@ -207,30 +237,32 @@ export default function CountryDetailScreen() {
             <Text style={styles.tripNotesText}>AI Trips Summary is coming soon!</Text>
           </TouchableOpacity>
         </View>
-
         {/* Cities Explored Section */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeaderTitle}>CITIES EXPLORED</Text>
-          <View style={styles.citiesList}>
-            {sampleCities.map((city) => (
-              <TouchableOpacity
-                key={city.id}
-                style={[sharedStyles.socialButton, styles.cityCardOverride]}
-                activeOpacity={0.7}
-              >
-                {/* Left Side: Photo + Title */}
-                <View style={styles.cityLeftRow}>
-                  <Image source={{ uri: city.image }} style={styles.cityImage} />
-                  <Text style={styles.cityName}>{city.name}</Text>
-                </View>
-
-                {/* Right Side: Days Badge */}
-                <View style={styles.badgeContainer}>
-                  <Text style={styles.badgeText}>{city.duration}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {countryUserData.cities.length === 0 ? (
+            <View style={styles.tripNotesContainer}>
+              <Text style={styles.tripNotesText}>Cities feature coming soon!</Text>
+            </View>
+          ) : (
+            <View style={styles.citiesList}>
+              {countryUserData.cities.map((city: any) => (
+                <TouchableOpacity
+                  key={city.id || city.name}
+                  style={[sharedStyles.socialButton, styles.cityCardOverride]}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cityLeftRow}>
+                    <Image source={{ uri: city.image }} style={styles.cityImage} />
+                    <Text style={styles.cityName}>{city.name}</Text>
+                  </View>
+                  <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>{city.duration || '0 days'}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>

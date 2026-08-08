@@ -120,6 +120,7 @@ interface UserContextType {
     localUri: string,
     onProgress?: (progressPercent: number) => void
   ) => Promise<string>;
+  checkDateOverlap: (countryCode: string, startDate: string, endDate?: string) => Promise<boolean>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -311,7 +312,41 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return fetchUserProfile(uid);
     }, [fetchUserProfile]);
 
-    // Helper method to handle saving trip visits
+const checkDateOverlap = useCallback(
+  async (countryCode: string, startDate: string, endDate?: string): Promise<boolean> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !startDate) return false;
+
+    try {
+      const countryRef = doc(db, 'users', uid, 'countries', countryCode);
+      const countrySnap = await getDoc(countryRef);
+
+      if (!countrySnap.exists()) return false;
+
+      const existingVisits: { arrivalDate: any; departureDate: any }[] =
+        countrySnap.data().visits || [];
+
+      const selectedStart = new Date(startDate).getTime();
+      const selectedEnd = endDate ? new Date(endDate).getTime() : selectedStart;
+
+      return existingVisits.some((visit) => {
+        const existingStart = visit.arrivalDate?.toDate
+          ? visit.arrivalDate.toDate().getTime()
+          : new Date(visit.arrivalDate).getTime();
+        const existingEnd = visit.departureDate?.toDate
+          ? visit.departureDate.toDate().getTime()
+          : new Date(visit.departureDate).getTime();
+
+        return selectedStart <= existingEnd && selectedEnd >= existingStart;
+      });
+    } catch (err) {
+      console.error('Error checking date overlap:', err);
+      return false;
+    }
+  },
+  []
+);
+
     const addTripVisit = useCallback(
     async ({
         code,
@@ -326,24 +361,37 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const uid = auth.currentUser?.uid;
         if (!uid) throw new Error('UserContext: no authenticated user.');
 
-        const countryRef = doc(db, 'users', uid, 'countries', code);
-        const countrySnap = await getDoc(countryRef);
-
         const arrivalTimestamp = startDate ? Timestamp.fromDate(new Date(startDate)) : null;
         const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
         const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
         let targetTripId = selectedTripId;
 
         const userDocRef = doc(db, 'users', uid);
+        const countryRef = doc(db, 'users', uid, 'countries', code);
+        const countrySnap = await getDoc(countryRef);
+
+        // Calculate days visited for current trip entry
+        let visitDays = 1;
+        if (startDate && endDate) {
+        const diffTime = Math.abs(new Date(endDate).getTime() - new Date(startDate).getTime());
+        visitDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        }
+
+        const newVisitObj = {
+        arrivalDate: arrivalTimestamp,
+        departureDate: departureTimestamp || arrivalTimestamp,
+        };
 
         if (countrySnap.exists()) {
         const existingData = countrySnap.data();
+        const existingVisits = existingData.visits || [];
+        const updatedVisits = [...existingVisits, newVisitObj];
+
         await updateDoc(countryRef, {
             visitCount: increment(1),
             updatedAt: serverTimestamp(),
-            firstVisited: existingData.firstVisited || arrivalTimestamp,
-            recentArrival: arrivalTimestamp,
-            lastVisited: departureTimestamp || existingData.lastVisited || arrivalTimestamp,
+            visits: updatedVisits,
+            totalDaysVisited: increment(visitDays),
             photos: [...(existingData.photos || []), ...uploadedPhotosData],
             coverPhoto: existingData.coverPhoto || coverPhotoURL,
         });
@@ -351,10 +399,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         await setDoc(countryRef, {
             countryCode: code,
             countryName: name,
-            firstVisited: arrivalTimestamp,
-            recentArrival: arrivalTimestamp,
-            lastVisited: arrivalTimestamp || departureTimestamp,
             visitCount: 1,
+            totalDaysVisited: visitDays,
+            visits: [newVisitObj],
             photos: uploadedPhotosData,
             coverPhoto: coverPhotoURL,
             createdAt: serverTimestamp(),
@@ -366,6 +413,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         });
         }
 
+        // 1. Handle New Trip Creation
         if (selectedTripId === 'new' && tripName && tripName.trim() !== '') {
         const newTripRef = doc(collection(db, 'users', uid, 'trips'));
         targetTripId = newTripRef.id;
@@ -379,14 +427,40 @@ export function UserProvider({ children }: { children: ReactNode }) {
             cities: [],
             photos: uploadedPhotosData,
             coverPhoto: coverPhotoURL,
+            createdAt: serverTimestamp(),
         });
 
         await updateDoc(userDocRef, {
             'stats.trips': increment(1),
         });
+        } else if (targetTripId && targetTripId !== 'new') {
+        // Update existing trip countries list if needed
+        const tripRef = doc(db, 'users', uid, 'trips', targetTripId);
+        const tripSnap = await getDoc(tripRef);
+        if (tripSnap.exists()) {
+            const currentCountries = tripSnap.data().countries || [];
+            if (!currentCountries.includes(code)) {
+            await updateDoc(tripRef, { countries: [...currentCountries, code] });
+            }
+        }
         }
 
+        // 2. Add country subcollection entry under /users/uID/trips/tripid/countries/countrycode/
         if (targetTripId && targetTripId !== 'new') {
+        const tripCountryRef = doc(db, 'users', uid, 'trips', targetTripId, 'countries', code);
+        await setDoc(
+            tripCountryRef,
+            {
+            countryCode: code,
+            countryName: name,
+            arrivalDate: arrivalTimestamp,
+            departureDate: departureTimestamp || arrivalTimestamp,
+            coverPhoto: coverPhotoURL,
+            description: notes || '',
+            },
+            { merge: true }
+        );
+
         const cSnap = await getDoc(countryRef);
         if (cSnap.exists()) {
             const currentTrips = cSnap.data().tripIds || [];
@@ -396,7 +470,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
         }
 
-        // Refresh context local state
         await fetchUserProfile(uid);
     },
     [fetchUserProfile]
@@ -608,6 +681,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         uploadUserFile,
         deleteUserFile,
         uploadProfilePhoto,
+        checkDateOverlap,
         }}
     >
         {children}

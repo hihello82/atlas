@@ -30,7 +30,9 @@ export default function AddTrip() {
   const auth = getAuth();
   const user = auth.currentUser;
 
-  const { userTrips: existingTrips, addTripVisit, uploadUserFile, deleteUserFile } = useUser();
+  const { userTrips: existingTrips, addTripVisit, uploadUserFile, deleteUserFile, checkDateOverlap } = useUser();
+
+  const [hasOverlapError, setHasOverlapError] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [tripName, setTripName] = useState('');
@@ -197,38 +199,49 @@ export default function AddTrip() {
     return marked;
   };
 
-const handleSave = async () => {
-  if (!user || !code) return;
-  setLoading(true);
+    const handleSave = async () => {
+    if (!user || !code || !startDate) return;
 
-  let uploadedPhotosData: { url: string; caption: string }[] = [];
-  try {
-    uploadedPhotosData = await uploadPhotosToStorage();
+    setLoading(true);
 
-    await addTripVisit({
-      code,
-      name,
-      startDate,
-      endDate,
-      tripName,
-      notes,
-      selectedTripId,
-      uploadedPhotosData,
-    });
-
-    setLoading(false);
-    router.replace('/HomeScreen');
-  } catch (err) {
-    console.error('Error saving trip:', err);
-    if (uploadedPhotosData.length > 0) {
-      await Promise.all(
-        uploadedPhotosData.map((p) => deleteUserFile(p.url).catch(() => {}))
-      );
+    // Check overlap via context handler
+    const isOverlapping = await checkDateOverlap(code, startDate, endDate);
+    if (isOverlapping) {
+        setHasOverlapError(true);
+        setLoading(false);
+        return;
     }
-    setLoading(false);
-    setIsUploading(false);
-  }
-};
+
+    setHasOverlapError(false);
+
+    let uploadedPhotosData: { url: string; caption: string }[] = [];
+    try {
+        uploadedPhotosData = await uploadPhotosToStorage();
+
+        await addTripVisit({
+        code,
+        name,
+        startDate,
+        endDate,
+        tripName,
+        notes,
+        selectedTripId,
+        uploadedPhotosData,
+        });
+
+        setLoading(false);
+        router.replace('/HomeScreen');
+    } catch (err) {
+        console.error('Error saving trip:', err);
+        if (uploadedPhotosData.length > 0) {
+        await Promise.all(
+            uploadedPhotosData.map((p) => deleteUserFile(p.url).catch(() => {}))
+        );
+        }
+        setLoading(false);
+        setIsUploading(false);
+    }
+    };
 
   const selectedTripLabel =
     selectedTripId === 'new'
@@ -296,48 +309,61 @@ const handleSave = async () => {
             </View>
           )}
 
-          {/* Dropdown Selector */}
-          <Text style={styles.label}>Add to Trip</Text>
-          <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
-            <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
-            <Ionicons name="chevron-down" size={20} color="#64748b" />
-          </TouchableOpacity>
+        {/* Dropdown Selector */}
+        <Text style={styles.label}>Add to Trip</Text>
+        <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
+        <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
+        <Ionicons name="chevron-down" size={20} color="#64748b" />
+        </TouchableOpacity>
 
-          {selectedTripId === 'new' && (
-            <>
-              <Text style={styles.label}>New Trip Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Summer 2026 Backpacking"
-                value={tripName}
-                onChangeText={setTripName}
-              />
+        {/* Hide 'New Trip Name' if existing trip selected */}
+        {selectedTripId === 'new' && (
+        <>
+            <Text style={styles.label}>New Trip Name</Text>
+            <TextInput
+            style={styles.input}
+            placeholder="Summer 2026 Backpacking"
+            value={tripName}
+            onChangeText={setTripName}
+            />
+        </>
+        )}
 
-              <Text style={styles.label}>Trip Notes</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Any memories or notes?"
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-              />
-            </>
-          )}
+        {/* Always show Visit Notes */}
+        <Text style={styles.label}>Visit Notes</Text>
+        <TextInput
+        style={[styles.input, styles.textArea]}
+        placeholder="Any memories or notes?"
+        value={notes}
+        onChangeText={setNotes}
+        multiline
+        />
 
-          <Text style={styles.label}>Dates Visited</Text>
-          <TouchableOpacity
-            style={styles.dateSelector}
-            onPress={() => {
-              setTempStartDate(startDate);
-              setTempEndDate(endDate);
-              setShowDatePicker(true);
-            }}
-          >
-            <Ionicons name="calendar-outline" size={20} color="#007aff" />
-            <Text style={styles.dateSelectorText}>
-              {startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates'}
+        <Text style={styles.label}>Dates Visited</Text>
+        <TouchableOpacity
+        style={[styles.dateSelector, hasOverlapError && styles.dateSelectorError]}
+        onPress={() => {
+            setHasOverlapError(false);
+            setTempStartDate(startDate);
+            setTempEndDate(endDate);
+            setShowDatePicker(true);
+        }}
+        >
+        <Ionicons name="calendar-outline" size={20} color={hasOverlapError ? '#ef4444' : '#007aff'} />
+        <Text style={styles.dateSelectorText}>
+            {startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates'}
+        </Text>
+        </TouchableOpacity>
+
+        {/* Red overlap error message */}
+        {hasOverlapError && (
+        <Text style={sharedStyles.fieldErrorText}>
+            An existing visit already includes these dates.{' '}
+            <Text style={styles.errorTextBold} onPress={() => /*router.push(`/countries/${code}`)*/ console.log('transfer')}>
+            Edit visits here
             </Text>
-          </TouchableOpacity>
+        </Text>
+        )}
 
           {/* Upload Progress Bar */}
           {isUploading && (
@@ -475,4 +501,11 @@ const styles = StyleSheet.create({
   cancelButtonText: { color: '#64748b', fontWeight: 'bold' },
   applyButton: { backgroundColor: '#007aff' },
   applyButtonText: { color: '#fff', fontWeight: 'bold' },
+  dateSelectorError: {
+  borderColor: colors.errorRed,
+  borderWidth: 1.5,
+},
+errorTextBold: {
+  fontWeight: 'bold',
+},
 });
