@@ -2,11 +2,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import MapView, { PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../../config/firebaseConfig';
-// Import your local GeoJSON data
+
 import geoJsonData from '../../../assets/custom.geo.json';
+import { db } from '../../../config/firebaseConfig';
 import { colors, sharedStyles } from '../styles';
 
 export default function CountryDetailScreen() {
@@ -19,52 +28,21 @@ export default function CountryDetailScreen() {
     region: string;
     capital: string;
     population: string;
+    continent?: string;
+    photoUrl?: string;
+    latitude?: string;
+    longitude?: string;
   }>();
 
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check if the current country code exists in the GeoJSON
-  // Assumes your GeoJSON uses properties.iso_a3 or properties.adm0_a3 for 3-letter codes
+  // Check if current country exists in GeoJSON data
   const isCountryInGeoJson = geoJsonData.features.some(
-    (feature: any) => 
-      feature.properties?.iso_a3 === params.code || 
+    (feature: any) =>
+      feature.properties?.iso_a3 === params.code ||
       feature.properties?.adm0_a3 === params.code
   );
-
-  const rawPopulation = details?.population ?? params.population;
-  const parsedPopulation =
-    rawPopulation !== undefined && !isNaN(Number(rawPopulation))
-      ? Number(rawPopulation).toLocaleString()
-      : undefined;
-
-  const currencies = details?.currencies
-    ? Object.values(details.currencies)
-        .map((c: any) => (c.symbol ? `${c.name} (${c.symbol})` : c.name))
-        .join(', ')
-    : undefined;
-
-  const languages = details?.languages
-    ? Object.values(details.languages).join(', ')
-    : undefined;
-
-  const infoRows = [
-    { label: 'Capital', value: details?.capital ? (Array.isArray(details.capital) ? details.capital.join(', ') : details.capital) : params.capital },
-    { label: 'Population', value: parsedPopulation },
-    { label: 'Currencies', value: currencies },
-    { label: 'Languages', value: languages },
-    { label: 'Subregion', value: details?.subregion },
-    { label: 'Area', value: details?.area ? `${Number(details.area).toLocaleString()} km²` : undefined },
-    { label: 'Landlocked', value: details?.landlocked !== undefined ? (details.landlocked ? 'Yes' : 'No') : undefined },
-    { label: 'Continent', value: Array.isArray(details?.continents) ? details.continents.join(', ') : details?.continents },
-    { label: 'Demonym', value: details?.demonyms?.eng?.m || details?.demonym },
-    { label: 'Driving Side', value: details?.car?.side || details?.cars?.driving_side },
-    { label: 'Calling Code', value: details?.idd?.root ? `${details.idd.root}${details.idd.suffixes?.[0] || ''}` : undefined },
-    { label: 'Timezones', value: Array.isArray(details?.timezones) ? details.timezones.join(', ') : undefined },
-    { label: 'Internet TLD', value: Array.isArray(details?.tld) ? details.tld.join(', ') : undefined },
-    { label: 'UN Member', value: details?.unMember !== undefined ? (details.unMember ? 'Yes' : 'No') : undefined },
-    { label: 'Bordering Countries', value: Array.isArray(details?.borders) && details.borders.length > 0 ? details.borders.join(', ') : undefined },
-  ].filter((row) => row.value !== undefined && row.value !== '' && row.value !== null);
 
   useEffect(() => {
     if (!params.code) return;
@@ -94,70 +72,356 @@ export default function CountryDetailScreen() {
     fetchCountryDetail();
   }, [params.code]);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={sharedStyles.header}>
-        <TouchableOpacity style={sharedStyles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#0D1B2A" />
-        </TouchableOpacity>
-      </View>
+  // Dynamic values
+  const countryName = details?.name?.common || params.name || 'Country Name';
+  const continentName =
+    (Array.isArray(details?.continents) ? details.continents.join(', ') : details?.continents) ||
+    params.continent ||
+    params.region ||
+    'Continent';
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          {params.flagUrl ? (
-            <Image source={{ uri: params.flagUrl }} style={styles.flagImage} resizeMode="cover" />
-          ) : (
-            <Text style={styles.flagEmoji}>{params.flag}</Text>
-          )}
-          <Text style={styles.title}>{params.name}</Text>
-          <Text style={styles.subtitle}>{params.region}</Text>
+  const rawPopulation = details?.population ?? params.population;
+  const formattedPopulation =
+    rawPopulation !== undefined && !isNaN(Number(rawPopulation))
+      ? Number(rawPopulation).toLocaleString()
+      : 'N/A';
+
+  // Dynamic Coordinates calculation
+  const latitude =
+    details?.latlng?.[0] ??
+    (params.latitude ? parseFloat(params.latitude) : 20.0);
+  const longitude =
+    details?.latlng?.[1] ??
+    (params.longitude ? parseFloat(params.longitude) : 0.0);
+
+  // Sample data for Cities Explored
+  const sampleCities = [
+    { id: '1', name: 'Tokyo', duration: '5 days', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=300&q=80' },
+    { id: '2', name: 'Kyoto', duration: '4 days', image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=300&q=80' },
+    { id: '3', name: 'Osaka', duration: '5 days', image: 'https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=300&q=80' },
+  ];
+
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Top Header Hero Section */}
+        <View style={styles.heroContainer}>
+          <Image
+            source={{
+              uri:
+                params.photoUrl ||
+                'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
+            }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          {/* Darker Dimmed Overlay */}
+          <View style={styles.heroOverlay} />
+
+          {/* Top Navigation Row */}
+          <SafeAreaView style={styles.topNav}>
+            <TouchableOpacity
+              style={[sharedStyles.backButton, styles.customNavBtn]}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[sharedStyles.backButton, styles.customNavBtn]}
+              onPress={() => {}}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </SafeAreaView>
+
+          {/* Hero Country Details */}
+          <View style={styles.heroTitleContainer}>
+            <Text style={styles.countryTitle}>{countryName}</Text>
+            <Text style={styles.countrySubtitle}>
+              {continentName} · {formattedPopulation}
+            </Text>
+          </View>
         </View>
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 40 }} />
-        ) : (
-          <View style={styles.infoGrid}>
-            {infoRows.map((row) => (
-              <View key={row.label} style={styles.infoCard}>
-                <Text style={styles.infoLabel}>{row.label}</Text>
-                <Text style={styles.infoValue}>{row.value}</Text>
-              </View>
-            ))}
+        {/* Dynamic Map Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.mapCard}>
+            <MapView
+              style={styles.map}
+              provider={Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE}
+              region={{
+                latitude: latitude,
+                longitude: longitude,
+                latitudeDelta: 15.0,
+                longitudeDelta: 15.0,
+              }}
+              scrollEnabled={false}
+              zoomEnabled={false}
+            />
+          </View>
+        </View>
+
+        {/* Add New Visit Button Directly Under Map */}
+        {isCountryInGeoJson && (
+          <View style={styles.sectionContainer}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() =>
+                router.push({
+                  pathname: '../subtabs/addTrip',
+                  params: { code: params.code, name: params.name },
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addButtonText}>Add New Visit</Text>
+            </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
 
-      {/* Floating Add Country Button if valid match is found in GeoJSON */}
-      {isCountryInGeoJson && (
-        <View style={styles.footer}>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => router.push({
-              pathname: '../subtabs/addTrip', // Replace with your target screen path
-              params: { code: params.code, name: params.name }
-            })}
-          >
-            <Text style={styles.addButtonText}>Add New Visit</Text>
+        {/* Metric Cards Section */}
+        <View style={styles.statsRow}>
+          <TouchableOpacity style={[styles.statCard, styles.activeStatCard]} activeOpacity={0.7}>
+            <Text style={[styles.statValue, styles.activeStatText]}>3</Text>
+            <Text style={[styles.statLabel, styles.activeStatText]}>Visited Cities</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
+            <Text style={styles.statValue}>2</Text>
+            <Text style={styles.statLabel}>Total Trips</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
+            <Text style={styles.statValue}>14</Text>
+            <Text style={styles.statLabel}>Days Spent</Text>
           </TouchableOpacity>
         </View>
-      )}
-    </SafeAreaView>
+
+        {/* Trip Notes Section */}
+        <View style={styles.sectionContainer}>
+          <TouchableOpacity style={styles.tripNotesContainer} activeOpacity={0.8}>
+            <Text style={styles.sectionHeaderTitle}>TRIP NOTES</Text>
+            <Text style={styles.tripNotesText}>AI Trips Summary is coming soon!</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Cities Explored Section */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionHeaderTitle}>CITIES EXPLORED</Text>
+          <View style={styles.citiesList}>
+            {sampleCities.map((city) => (
+              <TouchableOpacity
+                key={city.id}
+                style={[sharedStyles.socialButton, styles.cityCardOverride]}
+                activeOpacity={0.7}
+              >
+                {/* Left Side: Photo + Title */}
+                <View style={styles.cityLeftRow}>
+                  <Image source={{ uri: city.image }} style={styles.cityImage} />
+                  <Text style={styles.cityName}>{city.name}</Text>
+                </View>
+
+                {/* Right Side: Days Badge */}
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>{city.duration}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.appBackground, paddingHorizontal: 24, paddingVertical: 20 },
-  content: { padding: 20, paddingBottom: 100 },
-  header: { alignItems: 'center', marginBottom: 24 },
-  flagImage: { width: 120, height: 80, borderRadius: 8, marginBottom: 12 },
-  flagEmoji: { fontSize: 64, marginBottom: 8 },
-  title: { fontSize: 28, fontWeight: 800, color: '#1a1a24', fontFamily: 'Playfair Display' },
-  subtitle: { fontSize: 16, color: '#666', marginTop: 4 },
-  infoGrid: { gap: 12 },
-  infoCard: { backgroundColor: '#ffffff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' },
-  infoLabel: { fontSize: 13, color: '#64748b', fontWeight: '500', marginBottom: 4 },
-  infoValue: { fontSize: 16, color: '#1e293b', fontWeight: '600' },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: 'rgba(248, 249, 250, 0.95)', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
-  addButton: { backgroundColor: '#007aff', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
-  addButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.appBackground,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+
+  /* Hero Section */
+  heroContainer: {
+    height: 240, // Reduced height
+    width: '100%',
+    position: 'relative',
+    justifyContent: 'space-between',
+  },
+  heroImage: {
+    ...StyleSheet.absoluteFill,
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)', // Darkened photo overlay
+  },
+  topNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 20 : 0,
+    zIndex: 10,
+  },
+  customNavBtn: {
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderWidth: 0,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  heroTitleContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    zIndex: 10,
+  },
+  countryTitle: {
+    fontSize: 32,
+    fontFamily: 'Playfair Display',
+    fontWeight: '700',
+    color: colors.white,
+    marginBottom: 2,
+  },
+  countrySubtitle: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '500',
+  },
+
+  /* Common Layout Elements */
+  sectionContainer: {
+    paddingHorizontal: 20,
+    marginTop: 16,
+  },
+  sectionHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: colors.titleDark,
+    marginBottom: 12,
+  },
+
+  /* Map Card */
+  mapCard: {
+    height: 150,
+    width: '100%',
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  map: {
+    ...StyleSheet.absoluteFill,
+  },
+
+  /* Add Visit Button */
+  addButton: {
+    backgroundColor: colors.primaryBlue,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  /* Interactive Stats Section */
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginTop: 16,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    alignItems: 'flex-start',
+  },
+  activeStatCard: {
+    backgroundColor: '#E6F4EA',
+    borderColor: 'transparent',
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.titleDark,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.subtitleGray,
+  },
+  activeStatText: {
+    color: '#0D622D',
+  },
+
+  /* Trip Notes Box */
+  tripNotesContainer: {
+    backgroundColor: '#F0F4F8',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  tripNotesText: {
+    fontSize: 15,
+    color: colors.subtitleGray,
+    lineHeight: 22,
+    fontWeight: '400',
+  },
+
+  /* Cities Explored List Layout */
+  citiesList: {
+    gap: 4,
+  },
+  cityCardOverride: {
+    width: '100%',
+    height: 72,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between', // Aligns photo/city to left and badge to right
+    paddingHorizontal: 16,
+  },
+  cityLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  cityImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+  },
+  cityName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.titleDark,
+  },
+  badgeContainer: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.subtitleGray,
+  },
 });
