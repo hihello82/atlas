@@ -96,6 +96,13 @@ export interface AddTripVisitParams {
   uploadedPhotosData: { url: string; caption: string }[];
 }
 
+export interface VisitedCountryDetail {
+  code: string;
+  totalTrips: number;
+  daysSpent: number;
+  visitedCities: string[];
+}
+
 interface UserContextType {
   userProfile: UserProfile | null;
   visitedCountryCodes: Record<string, string>;
@@ -121,6 +128,7 @@ interface UserContextType {
     onProgress?: (progressPercent: number) => void
   ) => Promise<string>;
   checkDateOverlap: (countryCode: string, startDate: string, endDate?: string) => Promise<boolean>;
+  getVisitedCountryDetail: (countryCode: string) => Promise<VisitedCountryDetail>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -207,6 +215,35 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
 
     const [userTrips, setUserTrips] = useState<TripItem[]>([]);
+
+    const getVisitedCountryDetail = useCallback(
+  async (countryCode: string): Promise<VisitedCountryDetail> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      return { code: countryCode, totalTrips: 0, daysSpent: 0, visitedCities: [] };
+    }
+
+    try {
+      const countryRef = doc(db, 'users', uid, 'countries', countryCode);
+      const countrySnap = await getDoc(countryRef);
+
+      if (countrySnap.exists()) {
+        const uData = countrySnap.data();
+        return {
+          code: countryCode,
+          totalTrips: uData.visitCount || (uData.visits ? uData.visits.length : 0),
+          daysSpent: uData.totalDaysVisited || 0,
+          visitedCities: uData.visitedCities || uData.cities || [],
+        };
+      }
+    } catch (err) {
+      console.error('Error fetching visited country details from UserContext:', err);
+    }
+
+    return { code: countryCode, totalTrips: 0, daysSpent: 0, visitedCities: [] };
+  },
+  []
+);
 
     // Update fetchUserProfile to fetch countries and trips subcollections
     const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfile | null> => {
@@ -682,6 +719,7 @@ const checkDateOverlap = useCallback(
         deleteUserFile,
         uploadProfilePhoto,
         checkDateOverlap,
+        getVisitedCountryDetail
         }}
     >
         {children}
