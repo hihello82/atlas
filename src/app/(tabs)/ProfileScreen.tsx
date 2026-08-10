@@ -180,7 +180,7 @@ export default function ProfileScreen() {
     ]}
     onPress={() => router.push('../subtabs/Cities')}
   >
-    <Text style={[styles.cardValue, { color: '#10B981' }]}>
+    <Text style={[styles.cardValue, { color: '#1aa216' }]}>
       {userProfile?.stats?.citiesVisited ?? 0}
     </Text>
     <Text style={styles.cardLabel}>Cities</Text>
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   cardsRow: { flexDirection: 'row', width: '100%', gap: 10, marginBottom: 16 },
   trackerCard: { flex: 1, padding: 12, borderRadius: 16, minHeight: 85, justifyContent: 'space-between' },
   visitedCard: { backgroundColor: '#eef6ff', borderColor: '#d0e5ff', borderWidth: 1 },
-  citiesCard: { backgroundColor: '#eeffee', borderColor: '#dcf4dc', borderWidth: 1 },
+  citiesCard: { backgroundColor: '#eeffee', borderColor: '#c6ffd7', borderWidth: 1 },
   tripsCard: { backgroundColor: '#f3e8ff', borderColor: '#e9d5ff', borderWidth: 1 },
   continentsCard: { backgroundColor: colors.white, borderColor: colors.borderLight, borderWidth: 1 },
   cardValue: { fontSize: 22, fontWeight: '700' },
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   secondaryButtonsRow: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 20 },
   secondaryButton: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.white, borderColor: colors.borderLight, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { fontSize: 14, fontWeight: '600', color: colors.titleDark },
-  savedButton: { backgroundColor: '#fef9c3', borderColor: '#fef08a' },
+  savedButton: { backgroundColor: '#fef9c3', borderColor: '#ffec5c' },
   savedButtonText: { fontSize: 14, fontWeight: '600', color: '#ca8a04' },
 
   recentActivityContainer: { width: '100%', marginTop: 10 },

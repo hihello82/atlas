@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getAuth } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
@@ -17,41 +16,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import geoJsonData from '../../../assets/custom.geo.json';
 import { db } from '../../../config/firebaseConfig';
+import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
 
 export default function CountryDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     code: string;
-    name: string;
-    flag: string;
-    flagUrl: string;
-    region: string;
-    capital: string;
-    population: string;
-    continent?: string;
-    photoUrl?: string;
-    latitude?: string;
-    longitude?: string;
   }>();
+
+  const { getVisitedCountryDetail, isCountrySaved, toggleSaveCountry } = useUser();
 
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const [isSaved, setIsSaved] = useState(false);
 
   const [countryUserData, setCountryUserData] = useState<{
-    totalDaysVisited: number;
-    tripIds: string[];
-    cities: any[];
+    totalTrips: number;
+    daysSpent: number;
+    visitedCities: any[];
   }>({
-    totalDaysVisited: 0,
-    tripIds: [],
-    cities: [],
+    totalTrips: 0,
+    daysSpent: 0,
+    visitedCities: [],
   });
 
-  // Check if current country exists in GeoJSON data
   const isCountryInGeoJson = geoJsonData.features.some(
     (feature: any) =>
       feature.properties?.iso_a3 === params.code ||
@@ -77,58 +66,41 @@ export default function CountryDetailScreen() {
           setDetails(match || null);
         }
 
-        // Fetch user specific data for this country if user is logged in
-        if (user?.uid) {
-          const userCountryRef = doc(db, 'users', user.uid, 'countries', params.code);
-          const userCountrySnap = await getDoc(userCountryRef);
+        const userData = await getVisitedCountryDetail(params.code);
+        setCountryUserData({
+          totalTrips: userData.totalTrips,
+          daysSpent: userData.daysSpent,
+          visitedCities: userData.visitedCities,
+        });
 
-          if (userCountrySnap.exists()) {
-            const data = userCountrySnap.data();
-            setCountryUserData({
-              totalDaysVisited: data.totalDaysVisited || 0,
-              tripIds: data.tripIds || [],
-              cities: data.cities || [],
-            });
-          }
-        }
+        const savedStatus = await isCountrySaved(params.code);
+        setIsSaved(savedStatus);
       } catch (err) {
-        console.error('Failed to fetch country detail from Firestore:', err);
+        console.error('Failed to fetch country detail:', err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchCountryDetail();
-  }, [params.code, user?.uid]);
+  }, [params.code, getVisitedCountryDetail, isCountrySaved]);
 
-  // Dynamic values
-  const countryName = details?.name?.common || params.name || 'Country Name';
-  const continentName =
-    (Array.isArray(details?.continents) ? details.continents.join(', ') : details?.continents) ||
-    params.continent ||
-    params.region ||
-    'Continent';
+  const handleStarPress = async () => {
+    const nextSavedState = await toggleSaveCountry(params.code, countryName);
+    setIsSaved(nextSavedState);
+  };
 
-  const rawPopulation = details?.population ?? params.population;
+  const countryName = details?.name?.common || 'Country Name';
+  const regionName = details?.region || 'Region';
+
+  const rawPopulation = details?.population;
   const formattedPopulation =
     rawPopulation !== undefined && !isNaN(Number(rawPopulation))
       ? Number(rawPopulation).toLocaleString()
       : 'N/A';
 
-  // Dynamic Coordinates calculation
-  const latitude =
-    details?.latlng?.[0] ??
-    (params.latitude ? parseFloat(params.latitude) : 20.0);
-  const longitude =
-    details?.latlng?.[1] ??
-    (params.longitude ? parseFloat(params.longitude) : 0.0);
-
-  // Sample data for Cities Explored
-  const sampleCities = [
-    { id: '1', name: 'Tokyo', duration: '5 days', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=300&q=80' },
-    { id: '2', name: 'Kyoto', duration: '4 days', image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=300&q=80' },
-    { id: '3', name: 'Osaka', duration: '5 days', image: 'https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=300&q=80' },
-  ];
+  const latitude = details?.latlng?.[0] ?? 20.0;
+  const longitude = details?.latlng?.[1] ?? 0.0;
 
   return (
     <View style={styles.container}>
@@ -137,40 +109,53 @@ export default function CountryDetailScreen() {
         <View style={styles.heroContainer}>
           <Image
             source={{
-              uri:
-                params.photoUrl ||
-                'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
+              uri: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
             }}
             style={styles.heroImage}
             resizeMode="cover"
           />
-          {/* Darker Dimmed Overlay */}
           <View style={styles.heroOverlay} />
 
-          {/* Top Navigation Row */}
-          <SafeAreaView style={styles.topNav}>
-            <TouchableOpacity
-              style={[sharedStyles.backButton, styles.customNavBtn]}
-              onPress={() => router.back()}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
+{/* Top Navigation Row */}
+<SafeAreaView style={styles.topNav}>
+  <TouchableOpacity
+    style={[sharedStyles.backButton, styles.customNavBtn]}
+    onPress={() => router.back()}
+    activeOpacity={0.8}
+  >
+    <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+  </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[sharedStyles.backButton, styles.customNavBtn]}
-              onPress={() => {}}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </SafeAreaView>
+  <View style={styles.rightNavButtons}>
+    {isCountryInGeoJson && (
+      <TouchableOpacity
+        style={[sharedStyles.backButton, styles.customNavBtn]}
+        onPress={handleStarPress}
+        activeOpacity={0.8}
+      >
+        <Ionicons
+          name={isSaved ? 'star' : 'star-outline'}
+          size={20}
+          color={isSaved ? '#FFBF00' : '#FFFFFF'}
+        />
+      </TouchableOpacity>
+    )}
+
+    <TouchableOpacity
+      style={[sharedStyles.backButton, styles.customNavBtn]}
+      onPress={() => {}}
+      activeOpacity={0.8}
+    >
+      <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+    </TouchableOpacity>
+  </View>
+</SafeAreaView>
 
           {/* Hero Country Details */}
           <View style={styles.heroTitleContainer}>
             <Text style={styles.countryTitle}>{countryName}</Text>
             <Text style={styles.countrySubtitle}>
-              {continentName} · {formattedPopulation}
+              {regionName} · {formattedPopulation}
             </Text>
           </View>
         </View>
@@ -201,7 +186,7 @@ export default function CountryDetailScreen() {
               onPress={() =>
                 router.push({
                   pathname: '../subtabs/addTrip',
-                  params: { code: params.code, name: params.name },
+                  params: { code: params.code, name: countryName },
                 })
               }
               activeOpacity={0.8}
@@ -210,22 +195,23 @@ export default function CountryDetailScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {/* Metric Cards Section */}
+
+        {/* Metric Cards Section: Visits, Cities, Days Spent */}
         <View style={styles.statsRow}>
-          <TouchableOpacity style={[styles.statCard, styles.activeStatCard]} activeOpacity={0.7}>
-            <Text style={[styles.statValue, styles.activeStatText]}>
-              {countryUserData.cities.length}
+          <TouchableOpacity style={[styles.statCard, styles.visitsStatCard]} activeOpacity={0.7}>
+            <Text style={[styles.statValue, styles.visitsStatText]}>
+              {countryUserData.totalTrips}
             </Text>
-            <Text style={[styles.statLabel, styles.activeStatText]}>Visited Cities</Text>
+            <Text style={[styles.statLabel, styles.visitsStatText]}>Visits</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
-            <Text style={styles.statValue}>{countryUserData.tripIds.length}</Text>
-            <Text style={styles.statLabel}>Total Trips</Text>
+            <Text style={styles.statValue}>{countryUserData.visitedCities.length}</Text>
+            <Text style={styles.statLabel}>Cities</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.statCard} activeOpacity={0.7}>
-            <Text style={styles.statValue}>{countryUserData.totalDaysVisited}</Text>
+            <Text style={styles.statValue}>{countryUserData.daysSpent}</Text>
             <Text style={styles.statLabel}>Days Spent</Text>
           </TouchableOpacity>
         </View>
@@ -237,16 +223,17 @@ export default function CountryDetailScreen() {
             <Text style={styles.tripNotesText}>AI Trips Summary is coming soon!</Text>
           </TouchableOpacity>
         </View>
+
         {/* Cities Explored Section */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeaderTitle}>CITIES EXPLORED</Text>
-          {countryUserData.cities.length === 0 ? (
+          {countryUserData.visitedCities.length === 0 ? (
             <View style={styles.tripNotesContainer}>
               <Text style={styles.tripNotesText}>Cities feature coming soon!</Text>
             </View>
           ) : (
             <View style={styles.citiesList}>
-              {countryUserData.cities.map((city: any) => (
+              {countryUserData.visitedCities.map((city: any) => (
                 <TouchableOpacity
                   key={city.id || city.name}
                   style={[sharedStyles.socialButton, styles.cityCardOverride]}
@@ -280,7 +267,7 @@ const styles = StyleSheet.create({
 
   /* Hero Section */
   heroContainer: {
-    height: 240, // Reduced height
+    height: 240,
     width: '100%',
     position: 'relative',
     justifyContent: 'space-between',
@@ -292,7 +279,7 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)', // Darkened photo overlay
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   topNav: {
     flexDirection: 'row',
@@ -300,6 +287,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 20 : 0,
     zIndex: 10,
+  },
+  rightNavButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   customNavBtn: {
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
@@ -383,9 +375,9 @@ const styles = StyleSheet.create({
     borderColor: colors.cardBorder,
     alignItems: 'flex-start',
   },
-  activeStatCard: {
-    backgroundColor: '#E6F4EA',
-    borderColor: 'transparent',
+  visitsStatCard: {
+    backgroundColor: '#eef6ff',
+    borderColor: '#d0e5ff',
   },
   statValue: {
     fontSize: 22,
@@ -398,8 +390,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.subtitleGray,
   },
-  activeStatText: {
-    color: '#0D622D',
+  visitsStatText: {
+    color: '#007aff',
   },
 
   /* Trip Notes Box */
@@ -427,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', // Aligns photo/city to left and badge to right
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
   cityLeftRow: {

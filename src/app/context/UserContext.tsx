@@ -1,6 +1,7 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -96,6 +97,12 @@ export interface AddTripVisitParams {
   uploadedPhotosData: { url: string; caption: string }[];
 }
 
+export interface SavedCountryItem {
+  code: string;
+  countryName?: string;
+  timeAdded: any;
+}
+
 export interface VisitedCountryDetail {
   code: string;
   totalTrips: number;
@@ -129,6 +136,12 @@ interface UserContextType {
   ) => Promise<string>;
   checkDateOverlap: (countryCode: string, startDate: string, endDate?: string) => Promise<boolean>;
   getVisitedCountryDetail: (countryCode: string) => Promise<VisitedCountryDetail>;
+  isCountrySaved: (countryCode: string) => Promise<boolean>;
+  toggleSaveCountry: (countryCode: string, countryName?: string) => Promise<boolean>;
+  getSavedCountries: () => Promise<SavedCountryItem[]>;
+  savedCountryCodes: Record<string, string>;
+  livedCountryCodes: Record<string, string>;
+  getLivedCountries: () => Promise<SavedCountryItem[]>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -175,20 +188,20 @@ function deepMergeProfile<T extends Record<string, any>>(
 export function UserProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [visitedCountryCodes, setVisitedCountryCodes] = useState<Record<string, string>>({});
+  const [savedCountryCodes, setSavedCountryCodes] = useState<Record<string, string>>({});
+  const [livedCountryCodes, setLivedCountryCodes] = useState<Record<string, string>>({});
   const [exploredPercentage, setExploredPercentage] = useState<string>('0.00');
   const [loading, setLoading] = useState(true);
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
+  const [userTrips, setUserTrips] = useState<TripItem[]>([]);
 
-    // Add state for recent activities inside UserProvider:
-    const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
-
-    // Helper function to format date range inside UserContext
-    const getOrdinal = (n: number) => {
+  const getOrdinal = (n: number) => {
     const s = ["th", "st", "nd", "rd"];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
-    };
+  };
 
-    const formatDateRange = (start: any, end: any) => {
+  const formatDateRange = (start: any, end: any) => {
     if (!start) return '';
     const startDate = start.toDate ? start.toDate() : new Date(start);
     const endDate = end ? (end.toDate ? end.toDate() : new Date(end)) : null;
@@ -198,7 +211,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const startYear = startDate.getFullYear();
 
     if (!endDate || startDate.getTime() === endDate.getTime()) {
-        return `${startMonth} ${startDay} ${startYear}`;
+      return `${startMonth} ${startDay} ${startYear}`;
     }
 
     const endMonth = endDate.toLocaleString('en-US', { month: 'long' });
@@ -206,62 +219,159 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const endYear = endDate.getFullYear();
 
     if (startYear !== endYear) {
-        return `${startMonth} ${startDay} ${startYear} - ${endMonth} ${endDay} ${endYear}`;
+      return `${startMonth} ${startDay} ${startYear} - ${endMonth} ${endDay} ${endYear}`;
     } else if (startMonth !== endMonth) {
-        return `${startMonth} ${startDay} - ${endMonth} ${endDay} ${startYear}`;
+      return `${startMonth} ${startDay} - ${endMonth} ${endDay} ${startYear}`;
     } else {
-        return `${startMonth} ${startDay} - ${endDay} ${startYear}`;
+      return `${startMonth} ${startDay} - ${endDay} ${startYear}`;
     }
-    };
+  };
 
-    const [userTrips, setUserTrips] = useState<TripItem[]>([]);
+  const getVisitedCountryDetail = useCallback(
+    async (countryCode: string): Promise<VisitedCountryDetail> => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        return { code: countryCode, totalTrips: 0, daysSpent: 0, visitedCities: [] };
+      }
 
-    const getVisitedCountryDetail = useCallback(
-  async (countryCode: string): Promise<VisitedCountryDetail> => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
+      try {
+        const countryRef = doc(db, 'users', uid, 'countries', countryCode);
+        const countrySnap = await getDoc(countryRef);
+
+        if (countrySnap.exists()) {
+          const uData = countrySnap.data();
+          return {
+            code: countryCode,
+            totalTrips: uData.visitCount || (uData.visits ? uData.visits.length : (uData.tripIds ? uData.tripIds.length : 0)),
+            daysSpent: uData.totalDaysVisited || 0,
+            visitedCities: uData.visitedCities || uData.cities || [],
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching visited country details from UserContext:', err);
+      }
+
       return { code: countryCode, totalTrips: 0, daysSpent: 0, visitedCities: [] };
-    }
+    },
+    []
+  );
+
+  const isCountrySaved = useCallback(async (countryCode: string): Promise<boolean> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !countryCode) return false;
 
     try {
-      const countryRef = doc(db, 'users', uid, 'countries', countryCode);
-      const countrySnap = await getDoc(countryRef);
+      const savedRef = doc(db, 'users', uid, 'saved', countryCode);
+      const snap = await getDoc(savedRef);
+      return snap.exists();
+    } catch (err) {
+      console.error('Error checking saved country:', err);
+      return false;
+    }
+  }, []);
 
-      if (countrySnap.exists()) {
-        const uData = countrySnap.data();
-        return {
-          code: countryCode,
-          totalTrips: uData.visitCount || (uData.visits ? uData.visits.length : 0),
-          daysSpent: uData.totalDaysVisited || 0,
-          visitedCities: uData.visitedCities || uData.cities || [],
-        };
+  const toggleSaveCountry = useCallback(async (countryCode: string, countryName: string = ''): Promise<boolean> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !countryCode) return false;
+
+    try {
+      const savedRef = doc(db, 'users', uid, 'saved', countryCode);
+      const snap = await getDoc(savedRef);
+
+      if (snap.exists()) {
+        await deleteDoc(savedRef);
+        return false;
+      } else {
+        await setDoc(savedRef, {
+          countryCode: countryCode,
+          countryName: countryName,
+          timeAdded: serverTimestamp(),
+        });
+        return true;
       }
     } catch (err) {
-      console.error('Error fetching visited country details from UserContext:', err);
+      console.error('Error toggling saved country:', err);
+      return false;
     }
+  }, []);
 
-    return { code: countryCode, totalTrips: 0, daysSpent: 0, visitedCities: [] };
-  },
-  []
-);
+    const getSavedCountries = useCallback(async (): Promise<SavedCountryItem[]> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return [];
 
-    // Update fetchUserProfile to fetch countries and trips subcollections
-    const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfile | null> => {
     try {
-        const userRef = doc(db, 'users', uid);
-        const snap = await getDoc(userRef);
+      const savedRef = collection(db, 'users', uid, 'saved');
+      const snap = await getDocs(savedRef);
 
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        const activities: ActivityItem[] = [];
+      return snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          code: data.countryCode || docSnap.id,
+          countryName: data.countryName || '',
+          timeAdded: data.timeAdded || null,
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching saved countries:', err);
+      return [];
+    }
+  }, []);
 
-        // Fetch user countries subcollection
-        const countriesRef = collection(db, 'users', uid, 'countries');
-        const countriesSnap = await getDocs(countriesRef);
-        const colors: Record<string, string> = {};
-        let visitedCount = 0;
+  const getLivedCountries = useCallback(async (): Promise<SavedCountryItem[]> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return [];
 
-        countriesSnap.forEach((docSnap) => {
+    try {
+      const livedRef = collection(db, 'users', uid, 'lived');
+      const snap = await getDocs(livedRef);
+
+      return snap.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          code: data.countryCode || docSnap.id,
+          countryName: data.countryName || '',
+          timeAdded: data.timeAdded || null,
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching lived countries:', err);
+      return [];
+    }
+  }, []);
+
+  const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfile | null> => {
+    try {
+      const userRef = doc(db, 'users', uid);
+      const snap = await getDoc(userRef);
+
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const activities: ActivityItem[] = [];
+
+      const countriesRef = collection(db, 'users', uid, 'countries');
+      const countriesSnap = await getDocs(countriesRef);
+      const colors: Record<string, string> = {};
+      let visitedCount = 0;
+
+      const savedRef = collection(db, 'users', uid, 'saved');
+      const savedSnap = await getDocs(savedRef);
+      const savedColors: Record<string, string> = {};
+      savedSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const code = data.countryCode || docSnap.id;
+        savedColors[code] = '#fffa6d';
+      });
+
+      const livedRef = collection(db, 'users', uid, 'lived');
+      const livedSnap = await getDocs(livedRef);
+      const livedColors: Record<string, string> = {};
+      livedSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const code = data.countryCode || docSnap.id;
+        livedColors[code] = '#0d9488';
+      });
+
+      countriesSnap.forEach((docSnap) => {
         const data = docSnap.data();
         const cca3 = data.countryCode || docSnap.id;
         colors[cca3] = '#3498db';
@@ -271,26 +381,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const endDate = data.lastVisited || data.departureDate;
 
         if (recentDate) {
-            const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
-            if (jsDate >= sixMonthsAgo) {
+          const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
+          if (jsDate >= sixMonthsAgo) {
             activities.push({
-                id: `country-${docSnap.id}`,
-                title: `Visited ${data.countryName || docSnap.id}`,
-                location: data.countryName || docSnap.id,
-                dateObj: jsDate,
-                dateString: formatDateRange(recentDate, endDate),
-                image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80',
+              id: `country-${docSnap.id}`,
+              title: `Visited ${data.countryName || docSnap.id}`,
+              location: data.countryName || docSnap.id,
+              dateObj: jsDate,
+              dateString: formatDateRange(recentDate, endDate),
+              image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80',
             });
-            }
+          }
         }
-        });
+      });
 
-        // Fetch user trips subcollection
-        const tripsRef = collection(db, 'users', uid, 'trips');
-        const tripsSnap = await getDocs(tripsRef);
-        const tripsList: TripItem[] = [];
+      const tripsRef = collection(db, 'users', uid, 'trips');
+      const tripsSnap = await getDocs(tripsRef);
+      const tripsList: TripItem[] = [];
 
-        tripsSnap.forEach((docSnap) => {
+      tripsSnap.forEach((docSnap) => {
         const data = docSnap.data();
         tripsList.push({ id: docSnap.id, ...data } as TripItem);
 
@@ -298,227 +407,225 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const endDate = data.endDate;
 
         if (startDate) {
-            const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
-            if (jsDate >= sixMonthsAgo) {
+          const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
+          if (jsDate >= sixMonthsAgo) {
             activities.push({
-                id: `trip-${docSnap.id}`,
-                title: data.title || 'Trip',
-                location: data.countries?.join(', ') || 'Multiple Locations',
-                dateObj: jsDate,
-                dateString: formatDateRange(startDate, endDate),
-                image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
+              id: `trip-${docSnap.id}`,
+              title: data.title || 'Trip',
+              location: data.countries?.join(', ') || 'Multiple Locations',
+              dateObj: jsDate,
+              dateString: formatDateRange(startDate, endDate),
+              image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',
             });
-            }
+          }
         }
-        });
+      });
 
-        activities.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
-        
-        // Update local states
-        setRecentActivities(activities);
-        setUserTrips(tripsList);
-        setVisitedCountryCodes(colors);
-        setExploredPercentage(((visitedCount / 195) * 100).toFixed(2));
+      activities.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
 
-        if (snap.exists()) {
-  const profileData = snap.data() as Omit<UserProfile, 'uid'>;
-  const profile = {
-    uid,
-    ...profileData,
-    stats: {
-      ...profileData.stats,
-      trips: tripsList.length, // Pull # of trips from /users/uID/trips/
-    },
-  };
-  setUserProfile(profile);
-  return profile;
-} else {
+      setRecentActivities(activities);
+      setUserTrips(tripsList);
+      setVisitedCountryCodes(colors);
+      setSavedCountryCodes(savedColors);
+      setLivedCountryCodes(livedColors);
+      setExploredPercentage(((visitedCount / 195) * 100).toFixed(2));
+
+      if (snap.exists()) {
+        const profileData = snap.data() as Omit<UserProfile, 'uid'>;
+        const profile = {
+          uid,
+          ...profileData,
+          stats: {
+            ...profileData.stats,
+            trips: tripsList.length,
+          },
+        };
+        setUserProfile(profile);
+        return profile;
+      } else {
         setUserProfile(null);
         return null;
-        }
+      }
     } catch (error) {
-        console.error('UserContext: failed to fetch user profile/countries:', error);
-        return null;
+      console.error('UserContext: failed to fetch user profile/countries:', error);
+      return null;
     }
-    }, []);
+  }, []);
 
-    // Refresh handler for current logged in user
-    const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => {
+const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
-        setUserProfile(null);
-        setVisitedCountryCodes({});
-        setExploredPercentage('0.00');
-        setUserTrips([]);
-        setRecentActivities([]);
-        return null;
+      setUserProfile(null);
+      setVisitedCountryCodes({});
+      setSavedCountryCodes({});
+      setLivedCountryCodes({});
+      setExploredPercentage('0.00');
+      setUserTrips([]);
+      setRecentActivities([]);
+      return null;
     }
 
     return fetchUserProfile(uid);
-    }, [fetchUserProfile]);
+  }, [fetchUserProfile]);
 
-const checkDateOverlap = useCallback(
-  async (countryCode: string, startDate: string, endDate?: string): Promise<boolean> => {
-    const uid = auth.currentUser?.uid;
-    if (!uid || !startDate) return false;
+  const checkDateOverlap = useCallback(
+    async (countryCode: string, startDate: string, endDate?: string): Promise<boolean> => {
+      const uid = auth.currentUser?.uid;
+      if (!uid || !startDate) return false;
 
-    try {
-      const countryRef = doc(db, 'users', uid, 'countries', countryCode);
-      const countrySnap = await getDoc(countryRef);
-
-      if (!countrySnap.exists()) return false;
-
-      const existingVisits: { arrivalDate: any; departureDate: any }[] =
-        countrySnap.data().visits || [];
-
-      const selectedStart = new Date(startDate).getTime();
-      const selectedEnd = endDate ? new Date(endDate).getTime() : selectedStart;
-
-      return existingVisits.some((visit) => {
-        const existingStart = visit.arrivalDate?.toDate
-          ? visit.arrivalDate.toDate().getTime()
-          : new Date(visit.arrivalDate).getTime();
-        const existingEnd = visit.departureDate?.toDate
-          ? visit.departureDate.toDate().getTime()
-          : new Date(visit.departureDate).getTime();
-
-        return selectedStart <= existingEnd && selectedEnd >= existingStart;
-      });
-    } catch (err) {
-      console.error('Error checking date overlap:', err);
-      return false;
-    }
-  },
-  []
-);
-
-    const addTripVisit = useCallback(
-    async ({
-        code,
-        name,
-        startDate,
-        endDate,
-        tripName,
-        notes,
-        selectedTripId,
-        uploadedPhotosData,
-    }: AddTripVisitParams) => {
-        const uid = auth.currentUser?.uid;
-        if (!uid) throw new Error('UserContext: no authenticated user.');
-
-        const arrivalTimestamp = startDate ? Timestamp.fromDate(new Date(startDate)) : null;
-        const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
-        const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
-        let targetTripId = selectedTripId;
-
-        const userDocRef = doc(db, 'users', uid);
-        const countryRef = doc(db, 'users', uid, 'countries', code);
+      try {
+        const countryRef = doc(db, 'users', uid, 'countries', countryCode);
         const countrySnap = await getDoc(countryRef);
 
-        // Calculate days visited for current trip entry
-        let visitDays = 1;
-        if (startDate && endDate) {
+        if (!countrySnap.exists()) return false;
+
+        const existingVisits: { arrivalDate: any; departureDate: any }[] =
+          countrySnap.data().visits || [];
+
+        const selectedStart = new Date(startDate).getTime();
+        const selectedEnd = endDate ? new Date(endDate).getTime() : selectedStart;
+
+        return existingVisits.some((visit) => {
+          const existingStart = visit.arrivalDate?.toDate
+            ? visit.arrivalDate.toDate().getTime()
+            : new Date(visit.arrivalDate).getTime();
+          const existingEnd = visit.departureDate?.toDate
+            ? visit.departureDate.toDate().getTime()
+            : new Date(visit.departureDate).getTime();
+
+          return selectedStart <= existingEnd && selectedEnd >= existingStart;
+        });
+      } catch (err) {
+        console.error('Error checking date overlap:', err);
+        return false;
+      }
+    },
+    []
+  );
+
+  const addTripVisit = useCallback(
+    async ({
+      code,
+      name,
+      startDate,
+      endDate,
+      tripName,
+      notes,
+      selectedTripId,
+      uploadedPhotosData,
+    }: AddTripVisitParams) => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error('UserContext: no authenticated user.');
+
+      const arrivalTimestamp = startDate ? Timestamp.fromDate(new Date(startDate)) : null;
+      const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
+      const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
+      let targetTripId = selectedTripId;
+
+      const userDocRef = doc(db, 'users', uid);
+      const countryRef = doc(db, 'users', uid, 'countries', code);
+      const countrySnap = await getDoc(countryRef);
+
+      let visitDays = 1;
+      if (startDate && endDate) {
         const diffTime = Math.abs(new Date(endDate).getTime() - new Date(startDate).getTime());
         visitDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        }
+      }
 
-        const newVisitObj = {
+      const newVisitObj = {
         arrivalDate: arrivalTimestamp,
         departureDate: departureTimestamp || arrivalTimestamp,
-        };
+      };
 
-        if (countrySnap.exists()) {
+      if (countrySnap.exists()) {
         const existingData = countrySnap.data();
         const existingVisits = existingData.visits || [];
         const updatedVisits = [...existingVisits, newVisitObj];
 
         await updateDoc(countryRef, {
-            visitCount: increment(1),
-            updatedAt: serverTimestamp(),
-            visits: updatedVisits,
-            totalDaysVisited: increment(visitDays),
-            photos: [...(existingData.photos || []), ...uploadedPhotosData],
-            coverPhoto: existingData.coverPhoto || coverPhotoURL,
+          visitCount: increment(1),
+          updatedAt: serverTimestamp(),
+          visits: updatedVisits,
+          totalDaysVisited: increment(visitDays),
+          photos: [...(existingData.photos || []), ...uploadedPhotosData],
+          coverPhoto: existingData.coverPhoto || coverPhotoURL,
         });
-        } else {
+      } else {
         await setDoc(countryRef, {
-            countryCode: code,
-            countryName: name,
-            visitCount: 1,
-            totalDaysVisited: visitDays,
-            visits: [newVisitObj],
-            photos: uploadedPhotosData,
-            coverPhoto: coverPhotoURL,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+          countryCode: code,
+          countryName: name,
+          visitCount: 1,
+          totalDaysVisited: visitDays,
+          visits: [newVisitObj],
+          photos: uploadedPhotosData,
+          coverPhoto: coverPhotoURL,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
         });
 
         await updateDoc(userDocRef, {
-            'stats.countriesVisited': increment(1),
+          'stats.countriesVisited': increment(1),
         });
-        }
+      }
 
-        // 1. Handle New Trip Creation
-        if (selectedTripId === 'new' && tripName && tripName.trim() !== '') {
+      if (selectedTripId === 'new' && tripName && tripName.trim() !== '') {
         const newTripRef = doc(collection(db, 'users', uid, 'trips'));
         targetTripId = newTripRef.id;
 
         await setDoc(newTripRef, {
-            title: tripName,
-            description: notes || '',
-            startDate: arrivalTimestamp,
-            endDate: departureTimestamp,
-            countries: [code],
-            cities: [],
-            photos: uploadedPhotosData,
-            coverPhoto: coverPhotoURL,
-            createdAt: serverTimestamp(),
+          title: tripName,
+          description: notes || '',
+          startDate: arrivalTimestamp,
+          endDate: departureTimestamp,
+          countries: [code],
+          cities: [],
+          photos: uploadedPhotosData,
+          coverPhoto: coverPhotoURL,
+          createdAt: serverTimestamp(),
         });
 
         await updateDoc(userDocRef, {
-            'stats.trips': increment(1),
+          'stats.trips': increment(1),
         });
-        } else if (targetTripId && targetTripId !== 'new') {
-        // Update existing trip countries list if needed
+      } else if (targetTripId && targetTripId !== 'new') {
         const tripRef = doc(db, 'users', uid, 'trips', targetTripId);
         const tripSnap = await getDoc(tripRef);
         if (tripSnap.exists()) {
-            const currentCountries = tripSnap.data().countries || [];
-            if (!currentCountries.includes(code)) {
+          const currentCountries = tripSnap.data().countries || [];
+          if (!currentCountries.includes(code)) {
             await updateDoc(tripRef, { countries: [...currentCountries, code] });
-            }
+          }
         }
-        }
+      }
 
-        // 2. Add country subcollection entry under /users/uID/trips/tripid/countries/countrycode/
-        if (targetTripId && targetTripId !== 'new') {
+      if (targetTripId && targetTripId !== 'new') {
         const tripCountryRef = doc(db, 'users', uid, 'trips', targetTripId, 'countries', code);
         await setDoc(
-            tripCountryRef,
-            {
+          tripCountryRef,
+          {
             countryCode: code,
             countryName: name,
             arrivalDate: arrivalTimestamp,
             departureDate: departureTimestamp || arrivalTimestamp,
             coverPhoto: coverPhotoURL,
             description: notes || '',
-            },
-            { merge: true }
+          },
+          { merge: true }
         );
 
         const cSnap = await getDoc(countryRef);
         if (cSnap.exists()) {
-            const currentTrips = cSnap.data().tripIds || [];
-            if (!currentTrips.includes(targetTripId)) {
+          const currentTrips = cSnap.data().tripIds || [];
+          if (!currentTrips.includes(targetTripId)) {
             await updateDoc(countryRef, { tripIds: [...currentTrips, targetTripId] });
-            }
+          }
         }
-        }
+      }
 
-        await fetchUserProfile(uid);
+      await fetchUserProfile(uid);
     },
     [fetchUserProfile]
-    );
+  );
 
   const updateUserProfileLocal = useCallback((partial: Partial<UserProfile>) => {
     setUserProfile((prev) => (prev ? deepMergeProfile(prev, partial) : prev));
@@ -609,47 +716,46 @@ const checkDateOverlap = useCallback(
     [userProfile]
   );
 
-    const uploadUserFile = useCallback(
+  const uploadUserFile = useCallback(
     async (
-        localUri: string,
-        fileName: string,
-        onProgress?: (progressPercent: number) => void,
-        customPath?: string
+      localUri: string,
+      fileName: string,
+      onProgress?: (progressPercent: number) => void,
+      customPath?: string
     ): Promise<string> => {
-        const uid = auth.currentUser?.uid;
-        if (!uid) throw new Error('UserContext: no authenticated user.');
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error('UserContext: no authenticated user.');
 
-        const storage = getStorage();
-        const response = await fetch(localUri);
-        const blob = await response.blob();
+      const storage = getStorage();
+      const response = await fetch(localUri);
+      const blob = await response.blob();
 
-        // Default path remains under /userUploads/
-        const path = customPath || `userUploads/${uid}/${fileName}`;
-        const fileRef = ref(storage, path);
-        const uploadTask = uploadBytesResumable(fileRef, blob);
+      const path = customPath || `userUploads/${uid}/${fileName}`;
+      const fileRef = ref(storage, path);
+      const uploadTask = uploadBytesResumable(fileRef, blob);
 
-        return new Promise<string>((resolve, reject) => {
+      return new Promise<string>((resolve, reject) => {
         uploadTask.on(
-            'state_changed',
-            (snapshot) => {
+          'state_changed',
+          (snapshot) => {
             if (onProgress) {
-                onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
             }
-            },
-            (error) => reject(error),
-            async () => {
+          },
+          (error) => reject(error),
+          async () => {
             try {
-                const url = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve(url);
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
             } catch (err) {
-                reject(err);
+              reject(err);
             }
-            }
+          }
         );
-        });
+      });
     },
     []
-    );
+  );
 
   const deleteUserFile = useCallback(async (fileUrlOrPath: string): Promise<void> => {
     const storage = getStorage();
@@ -700,6 +806,8 @@ const checkDateOverlap = useCallback(
       } else {
         setUserProfile(null);
         setVisitedCountryCodes({});
+        setSavedCountryCodes({});
+        setLivedCountryCodes({});
         setExploredPercentage('0.00');
         setLoading(false);
       }
@@ -708,9 +816,9 @@ const checkDateOverlap = useCallback(
     return () => unsubscribe();
   }, [fetchUserProfile]);
 
-    return (
+  return (
     <UserContext.Provider
-        value={{
+      value={{
         userProfile,
         visitedCountryCodes,
         exploredPercentage,
@@ -727,12 +835,18 @@ const checkDateOverlap = useCallback(
         deleteUserFile,
         uploadProfilePhoto,
         checkDateOverlap,
-        getVisitedCountryDetail
-        }}
+        getVisitedCountryDetail,
+        isCountrySaved,
+        toggleSaveCountry,
+        getSavedCountries,
+        savedCountryCodes,
+        livedCountryCodes,
+        getLivedCountries,
+      }}
     >
-        {children}
+      {children}
     </UserContext.Provider>
-    );
+  );
 }
 
 export function useUser() {

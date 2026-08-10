@@ -41,6 +41,20 @@ interface CountryDetail {
   visitedCities: string[];
 }
 
+interface SavedListItem {
+  code: string;
+  name: string;
+  flag: string;
+  timeAdded: any;
+}
+
+interface LivedListItem {
+  code: string;
+  name: string;
+  flag: string;
+  timeAdded: any;
+}
+
 interface VisitedListItem {
   code: string;
   name: string;
@@ -54,8 +68,20 @@ export default function MapScreen() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  
-  const { visitedCountryCodes, getVisitedCountryDetail } = useUser();
+  const {
+    visitedCountryCodes,
+    savedCountryCodes,
+    livedCountryCodes,
+    getVisitedCountryDetail,
+    getSavedCountries,
+    getLivedCountries,
+  } = useUser();
+
+  const [savedList, setSavedList] = useState<SavedListItem[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+
+  const [livedList, setLivedList] = useState<LivedListItem[]>([]);
+  const [livedLoading, setLivedLoading] = useState(false);
 
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
   const [selectedCountryData, setSelectedCountryData] = useState<CountryDetail | null>(null);
@@ -146,6 +172,86 @@ const handleTabPress = (tab: string) => {
       fetchVisitedData();
     }
   }, [visitedCountryCodes, getVisitedCountryDetail]);
+
+  const formatSavedDate = (timeAdded: any): string => {
+    if (!timeAdded) return '';
+    const d = timeAdded.toDate ? timeAdded.toDate() : new Date(timeAdded);
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+// Fetch data for the Saved List
+  useEffect(() => {
+    const fetchSavedData = async () => {
+      setSavedLoading(true);
+      try {
+        const countryDocRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(countryDocRef);
+        const rawList = docSnap.exists() ? docSnap.data().countries || [] : [];
+
+        const savedCountries = await getSavedCountries();
+
+        const results = savedCountries.map((saved) => {
+          const match = rawList.find((c: any) => c.cca3 === saved.code || c.cca2 === saved.code);
+          const name = match ? (match.name?.common || match.names?.common || saved.code) : saved.code;
+          const flag = match ? (typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️') : '🏳️';
+
+          return {
+            code: saved.code,
+            name,
+            flag,
+            timeAdded: saved.timeAdded,
+          };
+        });
+
+        setSavedList(results.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        console.error('Failed to load saved list:', err);
+      } finally {
+        setSavedLoading(false);
+      }
+    };
+
+    if (activeTab === 'Saved' || activeTab === null) {
+      fetchSavedData();
+    }
+  }, [activeTab, getSavedCountries]);
+
+  // Fetch data for the Lived List
+  useEffect(() => {
+    const fetchLivedData = async () => {
+      setLivedLoading(true);
+      try {
+        const countryDocRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(countryDocRef);
+        const rawList = docSnap.exists() ? docSnap.data().countries || [] : [];
+
+        const livedCountries = await getLivedCountries();
+
+        const results = livedCountries.map((lived) => {
+          const match = rawList.find((c: any) => c.cca3 === lived.code || c.cca2 === lived.code);
+          const name = match ? (match.name?.common || match.names?.common || lived.code) : lived.code;
+          const flag = match ? (typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️') : '🏳️';
+
+          return {
+            code: lived.code,
+            name,
+            flag,
+            timeAdded: lived.timeAdded,
+          };
+        });
+
+        setLivedList(results.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        console.error('Failed to load lived list:', err);
+      } finally {
+        setLivedLoading(false);
+      }
+    };
+
+    if (activeTab === 'Lived' || activeTab === null) {
+      fetchLivedData();
+    }
+  }, [activeTab, getLivedCountries]);
 
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
@@ -282,8 +388,7 @@ const handleDismissPopup = () => {
   };
 
   const handlePopupContentPress = () => {
-    const country = selectedCountryData;
-    const targetId = country?.code || selectedCountryCode || '';
+    const targetId = selectedCountryData?.code || selectedCountryCode || '';
 
     if (!targetId) return;
 
@@ -292,8 +397,6 @@ const handleDismissPopup = () => {
         pathname: '/(countries)/[id]',
         params: {
           id: targetId,
-          name: country?.name || '',
-          flag: country?.flag || '',
         },
       });
     });
@@ -343,6 +446,48 @@ const handleDismissPopup = () => {
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+const displayedSavedList = savedList.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const displayedLivedList = livedList.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  interface CombinedListItem {
+    code: string;
+    name: string;
+    flag: string;
+    coverPhoto?: string;
+    subtext: string;
+  }
+
+  const combinedList: CombinedListItem[] = [
+    ...visitedList.map((item) => ({
+      code: item.code,
+      name: item.name,
+      flag: item.flag,
+      coverPhoto: item.coverPhoto,
+      subtext: `Visited ${item.totalTrips} ${item.totalTrips === 1 ? 'time' : 'times'}`,
+    })),
+    ...livedList.map((item) => ({
+      code: item.code,
+      name: item.name,
+      flag: item.flag,
+      subtext: `Lived here since ${formatSavedDate(item.timeAdded)}`,
+    })),
+    ...savedList.map((item) => ({
+      code: item.code,
+      name: item.name,
+      flag: item.flag,
+      subtext: `Saved on ${formatSavedDate(item.timeAdded)}`,
+    })),
+  ];
+
+  const displayedCombinedList = combinedList.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
 return (
   <View style={styles.container}>
     {/* Top Fade Gradient overlay replacing the white SafeArea bar */}
@@ -372,12 +517,21 @@ return (
               <Svg width={MAP_WIDTH} height={MAP_HEIGHT} viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}>
                 {formattedRegions.map((region) => {
                   if (!region.path) return null;
+                  const isLived = livedCountryCodes[region.id];
                   const isVisited = visitedCountryCodes[region.id];
+                  const isSaved = savedCountryCodes[region.id];
+                  const fillColor = isLived
+                    ? styles.activeTextLived.color
+                    : isVisited
+                    ? styles.activeTextVisited.color
+                    : isSaved
+                    ? '#FFBF00'
+                    : '#d3d3d3';
                   return (
                     <Path
                       key={region.id}
                       d={region.path}
-                      fill={isVisited || '#d3d3d3'}
+                      fill={fillColor}
                       stroke="#ffffff"
                       strokeWidth="0.5"
                       onPress={() => handleCountryClick(region.id, region.name)}
@@ -452,8 +606,39 @@ return (
 </View>
 
           {/* Section Content Rendering */}
-          <View style={styles.infoContent}>
-            {activeTab === 'Visited' ? (
+<View style={styles.infoContent}>
+            {activeTab === null ? (
+              listLoading || savedLoading || livedLoading ? (
+                <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
+              ) : displayedCombinedList.length > 0 ? (
+                <FlatList
+                  data={displayedCombinedList}
+                  keyExtractor={(item, index) => `${item.code}-${index}`}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.listItemRow}>
+                      <View style={styles.listImageContainer}>
+                        {item.coverPhoto ? (
+                          <Image source={{ uri: item.coverPhoto }} style={styles.listImage} />
+                        ) : (
+                          <View style={[styles.listImage, styles.fallbackImage]}>
+                            <Text style={styles.fallbackFlag}>{item.flag}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.listItemTextContainer}>
+                        <Text style={styles.listNameText}>{item.name}</Text>
+                        <Text style={styles.listSubText}>{item.subtext}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <Text style={styles.emptyStateText}>No countries found.</Text>
+              )
+            ) : activeTab === 'Visited' ? (
               listLoading ? (
                 <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
               ) : displayedList.length > 0 ? (
@@ -476,6 +661,60 @@ return (
                       <View style={styles.listItemTextContainer}>
                         <Text style={styles.listNameText}>{item.name}</Text>
                         <Text style={styles.listSubText}>Visited {item.totalTrips} {item.totalTrips === 1 ? 'time' : 'times'}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <Text style={styles.emptyStateText}>No countries found.</Text>
+              )
+            ) : activeTab === 'Saved' ? (
+              savedLoading ? (
+                <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
+              ) : displayedSavedList.length > 0 ? (
+                <FlatList
+                  data={displayedSavedList}
+                  keyExtractor={(item) => item.code}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.listItemRow}>
+                      <View style={styles.listImageContainer}>
+                        <View style={[styles.listImage, styles.fallbackImage]}>
+                          <Text style={styles.fallbackFlag}>{item.flag}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.listItemTextContainer}>
+                        <Text style={styles.listNameText}>{item.name}</Text>
+                        <Text style={styles.listSubText}>Saved on {formatSavedDate(item.timeAdded)}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <Text style={styles.emptyStateText}>No countries found.</Text>
+              )
+            ) : activeTab === 'Lived' ? (
+              livedLoading ? (
+                <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
+              ) : displayedLivedList.length > 0 ? (
+                <FlatList
+                  data={displayedLivedList}
+                  keyExtractor={(item) => item.code}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.listItemRow}>
+                      <View style={styles.listImageContainer}>
+                        <View style={[styles.listImage, styles.fallbackImage]}>
+                          <Text style={styles.fallbackFlag}>{item.flag}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.listItemTextContainer}>
+                        <Text style={styles.listNameText}>{item.name}</Text>
+                        <Text style={styles.listSubText}>Lived here since {formatSavedDate(item.timeAdded)}</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
                     </TouchableOpacity>
@@ -524,7 +763,7 @@ return (
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{selectedCountryData.totalTrips}</Text>
-                <Text style={styles.statTitle}>Total Trips</Text>
+                <Text style={styles.statTitle}>Visits</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
@@ -764,7 +1003,7 @@ dragHeader: {
   activeTabVisited: { backgroundColor: '#eef6ff', borderWidth: 1, borderColor: '#d0e5ff' },
   activeTextVisited: { color: '#007aff' },
 
-  activeTabSaved: { backgroundColor: '#fef9c3', borderWidth: 1, borderColor: '#fef08a' },
+  activeTabSaved: { backgroundColor: '#fef9c3', borderWidth: 1, borderColor: '#ffec5c' },
   activeTextSaved: { color: '#ca8a04' },
 
   activeTabTrips: { backgroundColor: '#f3e8ff', borderWidth: 1, borderColor: '#e9d5ff' },
