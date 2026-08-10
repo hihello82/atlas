@@ -1,31 +1,31 @@
 import { onAuthStateChanged } from 'firebase/auth';
 import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    increment,
-    serverTimestamp,
-    setDoc,
-    Timestamp,
-    updateDoc,
-    writeBatch,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  increment,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import {
-    deleteObject,
-    getDownloadURL,
-    getStorage,
-    listAll,
-    ref,
-    uploadBytesResumable,
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  listAll,
+  ref,
+  uploadBytesResumable,
 } from 'firebase/storage';
 import {
-    createContext,
-    ReactNode,
-    useCallback,
-    useContext,
-    useEffect,
-    useState,
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
 } from 'react';
 import { auth, db } from '../../../config/firebaseConfig';
 
@@ -321,10 +321,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setExploredPercentage(((visitedCount / 195) * 100).toFixed(2));
 
         if (snap.exists()) {
-        const profile = { uid, ...(snap.data() as Omit<UserProfile, 'uid'>) };
-        setUserProfile(profile);
-        return profile;
-        } else {
+  const profileData = snap.data() as Omit<UserProfile, 'uid'>;
+  const profile = {
+    uid,
+    ...profileData,
+    stats: {
+      ...profileData.stats,
+      trips: tripsList.length, // Pull # of trips from /users/uID/trips/
+    },
+  };
+  setUserProfile(profile);
+  return profile;
+} else {
         setUserProfile(null);
         return null;
         }

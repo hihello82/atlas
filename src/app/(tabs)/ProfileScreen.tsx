@@ -132,73 +132,89 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
  
-        {/* Travel Trackers Cards (3 Column Layout) */}
-        <View style={styles.cardsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.trackerCard,
-              styles.visitedCard,
-              pressed && sharedStyles.pressed,
-            ]}
-            onPress={() => router.push('../subtabs/Countries')}
-          >
-            <Text style={[styles.cardValue, { color: '#0084C7' }]}>
-              {userProfile?.stats?.countriesVisited ?? 0}
-            </Text>
-            <Text style={styles.cardLabel}>Countries</Text>
-          </Pressable>
- 
-          <Pressable
-            style={({ pressed }) => [
-              styles.trackerCard,
-              styles.citiesCard,
-              pressed && sharedStyles.pressed,
-            ]}
-            onPress={() => router.push('../subtabs/Cities')}
-          >
-            <Text style={[styles.cardValue, { color: '#10B981' }]}>
-              {userProfile?.stats?.citiesVisited ?? 0}
-            </Text>
-            <Text style={styles.cardLabel}>Cities</Text>
-          </Pressable>
- 
-          <Pressable
-            style={({ pressed }) => [
-              styles.trackerCard,
-              styles.continentsCard,
-              pressed && sharedStyles.pressed,
-            ]}
-            onPress={() => router.push('../subtabs/Continents')}
-          >
-            <Text style={[styles.cardValue, { color: '#111827' }]}>
-              {userProfile?.stats?.continentsVisited ?? 0}
-            </Text>
-            <Text style={styles.cardLabel}>Continents</Text>
-          </Pressable>
-        </View>
- 
-        {/* Saved and Achievements Buttons */}
-        <View style={styles.secondaryButtonsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && sharedStyles.pressed,
-            ]}
-            onPress={() => router.push('../profileSubtabs/saved')}
-          >
-            <Text style={styles.secondaryButtonText}>Saved</Text>
-          </Pressable>
- 
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && sharedStyles.pressed,
-            ]}
-            onPress={() => router.push('../profileSubtabs/achievements')}
-          >
-            <Text style={styles.secondaryButtonText}>Achievements</Text>
-          </Pressable>
-        </View>
+{/* Travel Trackers Cards (3 Column Layout) */}
+<View style={styles.cardsRow}>
+  <Pressable
+    style={({ pressed }) => [
+      styles.trackerCard,
+      styles.tripsCard,
+      pressed && sharedStyles.pressed,
+    ]}
+    onPress={() =>
+      router.push({
+        pathname: '/MapScreen',
+        params: { section: 'Trips' },
+      })
+    }
+  >
+    <Text style={[styles.cardValue, { color: '#9333ea' }]}>
+      {userProfile?.stats?.trips ?? 0}
+    </Text>
+    <Text style={styles.cardLabel}>Trips</Text>
+  </Pressable>
+
+  <Pressable
+    style={({ pressed }) => [
+      styles.trackerCard,
+      styles.visitedCard,
+      pressed && sharedStyles.pressed,
+    ]}
+    onPress={() =>
+      router.push({
+        pathname: '/MapScreen',
+        params: { section: 'Visited' },
+      })
+    }
+  >
+    <Text style={[styles.cardValue, { color: '#0084C7' }]}>
+      {userProfile?.stats?.countriesVisited ?? 0}
+    </Text>
+    <Text style={styles.cardLabel}>Countries</Text>
+  </Pressable>
+
+  <Pressable
+    style={({ pressed }) => [
+      styles.trackerCard,
+      styles.citiesCard,
+      pressed && sharedStyles.pressed,
+    ]}
+    onPress={() => router.push('../subtabs/Cities')}
+  >
+    <Text style={[styles.cardValue, { color: '#10B981' }]}>
+      {userProfile?.stats?.citiesVisited ?? 0}
+    </Text>
+    <Text style={styles.cardLabel}>Cities</Text>
+  </Pressable>
+</View>
+
+{/* Saved and Achievements Buttons */}
+<View style={styles.secondaryButtonsRow}>
+  <Pressable
+    style={({ pressed }) => [
+      styles.secondaryButton,
+      styles.savedButton,
+      pressed && sharedStyles.pressed,
+    ]}
+    onPress={() =>
+      router.push({
+        pathname: '/MapScreen',
+        params: { section: 'Saved' },
+      })
+    }
+  >
+    <Text style={styles.savedButtonText}>Saved</Text>
+  </Pressable>
+
+  <Pressable
+    style={({ pressed }) => [
+      styles.secondaryButton,
+      pressed && sharedStyles.pressed,
+    ]}
+    onPress={() => router.push('../profileSubtabs/achievements')}
+  >
+    <Text style={styles.secondaryButtonText}>Achievements</Text>
+  </Pressable>
+</View>
  
         {/* Recent Activity */}
         <View style={styles.recentActivityContainer}>
@@ -286,6 +302,7 @@ const styles = StyleSheet.create({
   trackerCard: { flex: 1, padding: 12, borderRadius: 16, minHeight: 85, justifyContent: 'space-between' },
   visitedCard: { backgroundColor: '#eef6ff', borderColor: '#d0e5ff', borderWidth: 1 },
   citiesCard: { backgroundColor: '#eeffee', borderColor: '#dcf4dc', borderWidth: 1 },
+  tripsCard: { backgroundColor: '#f3e8ff', borderColor: '#e9d5ff', borderWidth: 1 },
   continentsCard: { backgroundColor: colors.white, borderColor: colors.borderLight, borderWidth: 1 },
   cardValue: { fontSize: 22, fontWeight: '700' },
   cardLabel: { fontSize: 12, fontWeight: '500', color: colors.mutedGray },
@@ -293,6 +310,8 @@ const styles = StyleSheet.create({
   secondaryButtonsRow: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 20 },
   secondaryButton: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.white, borderColor: colors.borderLight, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { fontSize: 14, fontWeight: '600', color: colors.titleDark },
+  savedButton: { backgroundColor: '#fef9c3', borderColor: '#fef08a' },
+  savedButtonText: { fontSize: 14, fontWeight: '600', color: '#ca8a04' },
 
   recentActivityContainer: { width: '100%', marginTop: 10 },
   sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: colors.titleDark, marginBottom: 15, textAlign: 'left' },

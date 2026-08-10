@@ -53,6 +53,7 @@ export default function MapScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+
   
   const { visitedCountryCodes, getVisitedCountryDetail } = useUser();
 
@@ -60,7 +61,7 @@ export default function MapScreen() {
   const [selectedCountryData, setSelectedCountryData] = useState<CountryDetail | null>(null);
 
   // Info Screen States
-  const [activeTab, setActiveTab] = useState<string>('Visited');
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [visitedList, setVisitedList] = useState<VisitedListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -89,13 +90,22 @@ const snapPoints = useMemo(() => ({
 
   // Handle routing params payload
 useEffect(() => {
-  if (params.infoSize === 'large' && params.section) {
+  if (params.section) {
     setActiveTab(params.section as string);
+  } else {
+    setActiveTab(null);
+  }
+
+  if (params.infoSize === 'large') {
     animateInfoTo('large');
   } else {
     animateInfoTo('default');
   }
 }, [params.infoSize, params.section]);
+
+const handleTabPress = (tab: string) => {
+  setActiveTab((prev) => (prev === tab ? null : tab));
+};
 
   // Fetch data for the Visited List
   useEffect(() => {
@@ -171,14 +181,15 @@ useEffect(() => {
     }).start();
   };
 
-  const slideInPopup = () => {
-    Animated.spring(popupSlideAnim, {
-      toValue: 0,
-      tension: 65,
-      friction: 11,
-      useNativeDriver: true,
-    }).start();
-  };
+const slideInPopup = () => {
+  popupSlideAnim.setValue(300); // Start off-screen
+  Animated.spring(popupSlideAnim, {
+    toValue: 0, // Direct 0 position
+    tension: 65,
+    friction: 11,
+    useNativeDriver: true,
+  }).start();
+};
 
   const slideOutPopup = (callback?: () => void) => {
     Animated.timing(popupSlideAnim, {
@@ -193,9 +204,10 @@ useEffect(() => {
   };
 
 const handleCountryClick = async (countryCode: string, fallbackName: string) => {
+  // If clicking a different country while popup is active, update directly
   if (selectedCountryCode === countryCode) return;
 
-  // Immediately hide Info Popup before sliding up Country Popup
+  // Ensure bottom info screen hides completely
   animateInfoTo('hidden');
   
   setSelectedCountryCode(countryCode);
@@ -377,11 +389,6 @@ return (
           </ScrollView>
         </ScrollView>
 
-        {/* Dismissal Backdrop Layer for Country Popup */}
-        {selectedCountryCode && (
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleDismissPopup} />
-        )}
-
         {/* Dimming Backdrop for Large Info Screen */}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: dimOpacity }]} />
 
@@ -413,18 +420,36 @@ return (
             )}
           </View>
 
-          {/* Nav Tabs */}
-          <View style={styles.tabsContainer}>
-            {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => (
-              <TouchableOpacity 
-                key={tab} 
-                style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-                onPress={() => setActiveTab(tab)}
-              >
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+{/* Nav Tabs */}
+<View style={styles.tabsContainer}>
+  {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => {
+    const isActive = activeTab === tab || activeTab === null;
+
+    let activeTabStyle = styles.activeTabVisited;
+    let activeTextStyle = styles.activeTextVisited;
+    
+    if (tab === 'Saved') {
+      activeTabStyle = styles.activeTabSaved;
+      activeTextStyle = styles.activeTextSaved;
+    } else if (tab === 'Trips') {
+      activeTabStyle = styles.activeTabTrips;
+      activeTextStyle = styles.activeTextTrips;
+    } else if (tab === 'Lived') {
+      activeTabStyle = styles.activeTabLived;
+      activeTextStyle = styles.activeTextLived;
+    }
+
+    return (
+      <TouchableOpacity
+        key={tab}
+        style={[styles.tabButton, isActive && activeTabStyle]}
+        onPress={() => handleTabPress(tab)}
+      >
+        <Text style={[styles.tabText, isActive && activeTextStyle]}>{tab}</Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
           {/* Section Content Rendering */}
           <View style={styles.infoContent}>
@@ -467,74 +492,77 @@ return (
           </View>
         </Animated.View>
 
-        {/* ----- COUNTRY DETAILS POPUP (Animated Slide Up) ----- */}
-        {selectedCountryCode && (
-          <Animated.View
-            pointerEvents="box-none"
-            style={[
-              styles.popupOverlay,
-              {
-                bottom: insets.bottom + 12,
-                transform: [{ translateY: popupSlideAnim }],
-              },
-            ]}
-          >
-            <Pressable style={styles.popupCard} onPress={handlePopupContentPress}>
-              {/* Close (X) Button */}
-              <TouchableOpacity style={styles.closeButton} onPress={handleDismissPopup}>
-                <Ionicons name="close" size={22} color="#94a3b8" />
-              </TouchableOpacity>
+{/* ----- COUNTRY DETAILS POPUP (Draggable & Resizable) ----- */}
+{selectedCountryCode && (
+  <Animated.View
+    pointerEvents="box-none"
+    style={[
+      styles.popupOverlay,
+      {
+        bottom: insets.bottom + 12,
+        transform: [{ translateY: popupSlideAnim }],
+      },
+    ]}
+  >
+    <View style={styles.popupCard}>
+      {/* Close (X) Button */}
+      <TouchableOpacity style={styles.closeButton} onPress={handleDismissPopup}>
+        <Ionicons name="close" size={22} color="#94a3b8" />
+      </TouchableOpacity>
 
-              {selectedCountryData ? (
-                <>
-                  <View style={styles.popupHeader}>
-                    <Text style={styles.popupFlag}>{selectedCountryData.flag}</Text>
-                    <View style={styles.popupTitleContainer}>
-                      <Text style={styles.popupCountryName}>{selectedCountryData.name}</Text>
-                      <Text style={styles.popupCapital}>Capital: {selectedCountryData.capital}</Text>
-                    </View>
-                  </View>
+      <Pressable onPress={handlePopupContentPress}>
+        {selectedCountryData ? (
+          <>
+            <View style={styles.popupHeader}>
+              <Text style={styles.popupFlag}>{selectedCountryData.flag}</Text>
+              <View style={styles.popupTitleContainer}>
+                <Text style={styles.popupCountryName}>{selectedCountryData.name}</Text>
+                <Text style={styles.popupCapital}>Capital: {selectedCountryData.capital}</Text>
+              </View>
+            </View>
 
-                  <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{selectedCountryData.totalTrips}</Text>
-                      <Text style={styles.statTitle}>Total Trips</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{selectedCountryData.daysSpent}</Text>
-                      <Text style={styles.statTitle}>Days Spent</Text>
-                    </View>
-                  </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{selectedCountryData.totalTrips}</Text>
+                <Text style={styles.statTitle}>Total Trips</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{selectedCountryData.daysSpent}</Text>
+                <Text style={styles.statTitle}>Days Spent</Text>
+              </View>
+            </View>
 
-                  <View style={styles.citiesContainer}>
-                    <Text style={styles.citiesLabel}>Visited Cities:</Text>
-                    <Text style={styles.citiesList} numberOfLines={2}>
-                      {selectedCountryData.visitedCities.length > 0
-                        ? selectedCountryData.visitedCities.join(', ')
-                        : 'Cities feature coming soon!'}
-                    </Text>
-                  </View>
+            <View style={styles.citiesContainer}>
+              <Text style={styles.citiesLabel}>Visited Cities:</Text>
+              <Text style={styles.citiesList} numberOfLines={2}>
+                {selectedCountryData.visitedCities.length > 0
+                  ? selectedCountryData.visitedCities.join(', ')
+                  : 'Cities feature coming soon!'}
+              </Text>
+            </View>
 
-                  <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleAddNewVisit();
-                    }}
-                  >
-                    <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
-                    <Text style={styles.addButtonText}>Add New Visit</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={styles.loadingContainer}>
-                  <Text style={styles.loadingText}>Loading country details...</Text>
-                </View>
-              )}
-            </Pressable>
-          </Animated.View>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleAddNewVisit();
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
+              <Text style={styles.addButtonText}>Add New Visit</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#007aff" />
+            <Text style={styles.loadingText}>Loading details...</Text>
+          </View>
         )}
+      </Pressable>
+    </View>
+  </Animated.View>
+)}
       </View>
     </View>
   );
@@ -687,6 +715,8 @@ dragHeader: {
     paddingHorizontal: 16,
     borderRadius: 20,
     backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#E1E8E5'
   },
   activeTabButton: { backgroundColor: '#0f172a' },
   tabText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
@@ -730,4 +760,16 @@ dragHeader: {
   emptyStateText: { textAlign: 'center', marginTop: 30, color: '#94a3b8', fontSize: 15 },
   comingSoonContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40 },
   comingSoonText: { fontSize: 16, fontWeight: '500', color: '#94a3b8' },
+
+  activeTabVisited: { backgroundColor: '#eef6ff', borderWidth: 1, borderColor: '#d0e5ff' },
+  activeTextVisited: { color: '#007aff' },
+
+  activeTabSaved: { backgroundColor: '#fef9c3', borderWidth: 1, borderColor: '#fef08a' },
+  activeTextSaved: { color: '#ca8a04' },
+
+  activeTabTrips: { backgroundColor: '#f3e8ff', borderWidth: 1, borderColor: '#e9d5ff' },
+  activeTextTrips: { color: '#9333ea' },
+
+  activeTabLived: { backgroundColor: '#ccfbf1', borderWidth: 1, borderColor: '#99f6e4' },
+  activeTextLived: { color: '#0d9488' },
 });

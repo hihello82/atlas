@@ -242,31 +242,48 @@ export default function HomeScreen() {
         </View>
 
         {/* STATS SECTION */}
-        <View style={styles.statsContainer}>
-          <TouchableOpacity style={[styles.statBox, styles.statBoxBlue]}>
-            <Text style={[styles.statNumber, styles.textBlue]}>
-              {userProfile?.stats?.countriesVisited ?? 0}
-            </Text>
-            <Text style={styles.statLabel}>Countries</Text>
-          </TouchableOpacity>
+{/* STATS SECTION */}
+<View style={styles.statsContainer}>
+  <TouchableOpacity
+    style={[styles.statBox, styles.statBoxPurple]}
+    onPress={() =>
+      router.push({
+        pathname: '/MapScreen',
+        params: { section: 'Trips' },
+      })
+    }
+  >
+    <Text style={[styles.statNumber, styles.textPurple]}>
+      {userProfile?.stats?.trips ?? 0}
+    </Text>
+    <Text style={styles.statLabel}>Trips</Text>
+  </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.statBox, styles.statBoxGreen]}
-            onPress={() => router.push('/subtabs/Cities')}
-          >
-            <Text style={[styles.statNumber, styles.textGreen]}>
-              {userProfile?.stats?.citiesVisited ?? 0}
-            </Text>
-            <Text style={styles.statLabel}>Cities</Text>
-          </TouchableOpacity>
+  <TouchableOpacity
+    style={[styles.statBox, styles.statBoxBlue]}
+    onPress={() =>
+      router.push({
+        pathname: '/MapScreen',
+        params: { section: 'Visited' },
+      })
+    }
+  >
+    <Text style={[styles.statNumber, styles.textBlue]}>
+      {userProfile?.stats?.countriesVisited ?? 0}
+    </Text>
+    <Text style={styles.statLabel}>Countries</Text>
+  </TouchableOpacity>
 
-          <View style={[styles.statBox, styles.statBoxWhite]}>
-            <Text style={styles.statNumber}>
-              {userProfile?.stats?.continentsVisited ?? 0}
-            </Text>
-            <Text style={styles.statLabel}>Continents</Text>
-          </View>
-        </View>
+  <TouchableOpacity
+    style={[styles.statBox, styles.statBoxGreen]}
+    onPress={() => router.push('/subtabs/Cities')}
+  >
+    <Text style={[styles.statNumber, styles.textGreen]}>
+      {userProfile?.stats?.citiesVisited ?? 0}
+    </Text>
+    <Text style={styles.statLabel}>Cities</Text>
+  </TouchableOpacity>
+</View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -302,8 +319,10 @@ const styles = StyleSheet.create({
   statBoxBlue: { backgroundColor: '#eef6ff', borderColor: '#d0e5ff' },
   statBoxGreen: { backgroundColor: '#eeffee', borderColor: '#dcf4dc' },
   statBoxWhite: { backgroundColor: '#fff' },
+  statBoxPurple: { backgroundColor: '#f3e8ff', borderColor: '#e9d5ff' },
   statNumber: { fontSize: 24, fontWeight: 'bold', color: '#1a1a24', marginBottom: 4 },
   textBlue: { color: '#007aff' },
   textGreen: { color: '#34c759' },
+  textPurple: { color: '#9333ea' },
   statLabel: { fontSize: 12, color: '#666' },
 });
