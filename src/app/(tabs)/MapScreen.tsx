@@ -63,6 +63,15 @@ interface VisitedListItem {
   coverPhoto?: string;
 }
 
+interface CombinedListItem {
+  code: string;
+  name: string;
+  flag: string;
+  coverPhoto?: string | null;
+  subtext: string;
+  isTrip?: boolean; // Added to differentiate routing
+}
+
 export default function MapScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -75,7 +84,54 @@ export default function MapScreen() {
     getVisitedCountryDetail,
     getSavedCountries,
     getLivedCountries,
+    userTrips, // Add this
   } = useUser();
+
+  // Add Trip States
+  interface TripListItem {
+    id: string;
+    title: string;
+    dateString: string;
+    flag: string;
+    coverPhoto?: string | null;
+  }
+
+  const [tripsList, setTripsList] = useState<TripListItem[]>([]);
+  const [tripsLoading, setTripsLoading] = useState(false);
+
+  // Date Formatter Helper
+  const getOrdinal = (n: number) => {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  const formatTripDates = (start: any, end: any): string => {
+    if (!start) return '';
+    const sDate = start.toDate ? start.toDate() : new Date(start);
+    const eDate = end ? (end.toDate ? end.toDate() : new Date(end)) : sDate;
+
+    // Abbreviate to 3 letters and add a period (e.g., "Jul.", "Jun.")
+    const sMonth = sDate.toLocaleString('en-US', { month: 'short' }).slice(0, 3) + '.';
+    const sDay = getOrdinal(sDate.getDate());
+    const sYear = sDate.getFullYear();
+
+    if (!end || sDate.getTime() === eDate.getTime()) {
+      return `${sMonth} ${sDay} ${sYear}`;
+    }
+
+    const eMonth = eDate.toLocaleString('en-US', { month: 'short' }).slice(0, 3) + '.';
+    const eDay = getOrdinal(eDate.getDate());
+    const eYear = eDate.getFullYear();
+
+    if (sYear !== eYear) {
+      return `${sMonth} ${sDay} ${sYear} - ${eMonth} ${eDay} ${eYear}`;
+    } else if (sMonth !== eMonth) {
+      return `${sMonth} ${sDay} - ${eMonth} ${eDay} ${sYear}`;
+    } else {
+      return `${sMonth} ${sDay} - ${eDay} ${sYear}`;
+    }
+  };
 
   const [savedList, setSavedList] = useState<SavedListItem[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
@@ -101,12 +157,12 @@ export default function MapScreen() {
   const horizontalScrollRef = useRef<ScrollView>(null);
 
   // Snap Points for Info Screen
-const snapPoints = useMemo(() => ({
-  large: insets.top + 20,
-  default: SCREEN_HEIGHT - 380,
-  small: SCREEN_HEIGHT - insets.bottom - 95,
-  hidden: SCREEN_HEIGHT * 1.5, // Pushes completely off the screen
-}), [insets]);
+  const snapPoints = useMemo(() => ({
+    large: insets.top + 20,
+    default: SCREEN_HEIGHT - 380,
+    small: SCREEN_HEIGHT - insets.bottom - 125,
+    hidden: SCREEN_HEIGHT * 1.5, // Pushes completely off the screen
+  }), [insets]);
 
   // Center map horizontally on mount
   useEffect(() => {
@@ -115,23 +171,23 @@ const snapPoints = useMemo(() => ({
   }, []);
 
   // Handle routing params payload
-useEffect(() => {
-  if (params.section) {
-    setActiveTab(params.section as string);
-  } else {
-    setActiveTab(null);
-  }
+  useEffect(() => {
+    if (params.section) {
+      setActiveTab(params.section as string);
+    } else {
+      setActiveTab(null);
+    }
 
-  if (params.infoSize === 'large') {
-    animateInfoTo('large');
-  } else {
-    animateInfoTo('default');
-  }
-}, [params.infoSize, params.section]);
+    if (params.infoSize === 'large') {
+      animateInfoTo('large');
+    } else {
+      animateInfoTo('default');
+    }
+  }, [params.infoSize, params.section]);
 
-const handleTabPress = (tab: string) => {
-  setActiveTab((prev) => (prev === tab ? null : tab));
-};
+  const handleTabPress = (tab: string) => {
+    setActiveTab((prev) => (prev === tab ? null : tab));
+  };
 
   // Fetch data for the Visited List
   useEffect(() => {
@@ -148,14 +204,14 @@ const handleTabPress = (tab: string) => {
           const match = rawList.find((c: any) => c.cca3 === code || c.cca2 === code);
           const name = match ? (match.name?.common || match.names?.common || code) : code;
           const flag = match ? (typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️') : '🏳️';
-          
+
           return {
             code,
             name,
             flag,
             totalTrips: detail.totalTrips || 1,
             // Assert coverPhoto availability assuming user context fetches it or fallback 
-            coverPhoto: (detail as any).coverPhoto || null, 
+            coverPhoto: (detail as any).coverPhoto || null,
           };
         });
 
@@ -179,7 +235,7 @@ const handleTabPress = (tab: string) => {
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-// Fetch data for the Saved List
+  // Fetch data for the Saved List
   useEffect(() => {
     const fetchSavedData = async () => {
       setSavedLoading(true);
@@ -215,6 +271,53 @@ const handleTabPress = (tab: string) => {
       fetchSavedData();
     }
   }, [activeTab, getSavedCountries]);
+
+  // Add this useEffect to process trips
+  useEffect(() => {
+    const processTripsData = async () => {
+      setTripsLoading(true);
+      try {
+        // Allowed Firestore call to fetch flags from app_data
+        const countryDocRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(countryDocRef);
+        const rawList = docSnap.exists() ? docSnap.data().countries || [] : [];
+
+        const formattedTrips = userTrips.map((trip) => {
+          let flag = '🏳️';
+          if (trip.countries && trip.countries.length > 0) {
+            const firstCountryCode = trip.countries[0];
+            const match = rawList.find((c: any) => c.cca3 === firstCountryCode || c.cca2 === firstCountryCode);
+            if (match) {
+              flag = typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️';
+            }
+          }
+
+          return {
+            id: trip.id,
+            title: trip.title || 'Untitled Trip',
+            dateString: formatTripDates(trip.startDate, trip.endDate),
+            coverPhoto: trip.coverPhoto || null,
+            flag,
+          };
+        });
+
+        setTripsList(formattedTrips.sort((a, b) => a.title.localeCompare(b.title)));
+      } catch (err) {
+        console.error('Failed to load trips list:', err);
+      } finally {
+        setTripsLoading(false);
+      }
+    };
+
+    if (activeTab === 'Trips' || activeTab === null) {
+      processTripsData();
+    }
+  }, [activeTab, userTrips]);
+
+  // Filter Trips List Results
+  const displayedTripsList = tripsList.filter(item =>
+    item.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Fetch data for the Lived List
   useEffect(() => {
@@ -287,15 +390,15 @@ const handleTabPress = (tab: string) => {
     }).start();
   };
 
-const slideInPopup = () => {
-  popupSlideAnim.setValue(300); // Start off-screen
-  Animated.spring(popupSlideAnim, {
-    toValue: 0, // Direct 0 position
-    tension: 65,
-    friction: 11,
-    useNativeDriver: true,
-  }).start();
-};
+  const slideInPopup = () => {
+    popupSlideAnim.setValue(300); // Start off-screen
+    Animated.spring(popupSlideAnim, {
+      toValue: 0, // Direct 0 position
+      tension: 65,
+      friction: 11,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const slideOutPopup = (callback?: () => void) => {
     Animated.timing(popupSlideAnim, {
@@ -309,70 +412,70 @@ const slideInPopup = () => {
     });
   };
 
-const handleCountryClick = async (countryCode: string, fallbackName: string) => {
-  // If clicking a different country while popup is active, update directly
-  if (selectedCountryCode === countryCode) return;
+  const handleCountryClick = async (countryCode: string, fallbackName: string) => {
+    // If clicking a different country while popup is active, update directly
+    if (selectedCountryCode === countryCode) return;
 
-  // Ensure bottom info screen hides completely
-  animateInfoTo('hidden');
-  
-  setSelectedCountryCode(countryCode);
-  setSelectedCountryData(null);
-  slideInPopup();
+    // Ensure bottom info screen hides completely
+    animateInfoTo('hidden');
 
-  try {
-    const countryDocRef = doc(db, 'app_data', 'countries');
-    const docSnap = await getDoc(countryDocRef);
+    setSelectedCountryCode(countryCode);
+    setSelectedCountryData(null);
+    slideInPopup();
 
-    let fetchedName = fallbackName;
-    let flag = '🏳️';
-    let capital = 'N/A';
+    try {
+      const countryDocRef = doc(db, 'app_data', 'countries');
+      const docSnap = await getDoc(countryDocRef);
 
-    if (docSnap.exists()) {
-      const rawList = docSnap.data().countries || [];
-      const match = rawList.find(
-        (c: any) => c.cca3 === countryCode || c.cca2 === countryCode
-      );
+      let fetchedName = fallbackName;
+      let flag = '🏳️';
+      let capital = 'N/A';
 
-      if (match) {
-        fetchedName = match.name?.common || match.names?.common || fallbackName;
-        flag = typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️';
-        capital = Array.isArray(match.capital) ? match.capital[0] : 'N/A';
+      if (docSnap.exists()) {
+        const rawList = docSnap.data().countries || [];
+        const match = rawList.find(
+          (c: any) => c.cca3 === countryCode || c.cca2 === countryCode
+        );
+
+        if (match) {
+          fetchedName = match.name?.common || match.names?.common || fallbackName;
+          flag = typeof match.flag === 'string' ? match.flag : match.flag?.emoji || '🏳️';
+          capital = Array.isArray(match.capital) ? match.capital[0] : 'N/A';
+        }
       }
+
+      const visitedDetails = await getVisitedCountryDetail(countryCode);
+
+      setSelectedCountryData({
+        code: countryCode,
+        name: fetchedName,
+        flag,
+        capital,
+        totalTrips: visitedDetails.totalTrips,
+        daysSpent: visitedDetails.daysSpent,
+        visitedCities: visitedDetails.visitedCities,
+      });
+    } catch (err) {
+      console.error('Error fetching country data for popup:', err);
+      setSelectedCountryData({
+        code: countryCode,
+        name: fallbackName,
+        flag: '🏳️',
+        capital: 'N/A',
+        totalTrips: 0,
+        daysSpent: 0,
+        visitedCities: [],
+      });
     }
+  };
 
-    const visitedDetails = await getVisitedCountryDetail(countryCode);
-
-    setSelectedCountryData({
-      code: countryCode,
-      name: fetchedName,
-      flag,
-      capital,
-      totalTrips: visitedDetails.totalTrips,
-      daysSpent: visitedDetails.daysSpent,
-      visitedCities: visitedDetails.visitedCities,
-    });
-  } catch (err) {
-    console.error('Error fetching country data for popup:', err);
-    setSelectedCountryData({
-      code: countryCode,
-      name: fallbackName,
-      flag: '🏳️',
-      capital: 'N/A',
-      totalTrips: 0,
-      daysSpent: 0,
-      visitedCities: [],
-    });
-  }
-};
-
-const handleDismissPopup = () => {
-  if (selectedCountryCode) {
-    slideOutPopup(() => {
-      animateInfoTo('default'); // Brings Info Popup back into 'default' mode after popup exits
-    });
-  }
-};
+  const handleDismissPopup = () => {
+    if (selectedCountryCode) {
+      slideOutPopup(() => {
+        animateInfoTo('default'); // Brings Info Popup back into 'default' mode after popup exits
+      });
+    }
+  };
 
   const handleAddNewVisit = () => {
     const code = selectedCountryCode;
@@ -397,6 +500,7 @@ const handleDismissPopup = () => {
         pathname: '/(countries)/[id]',
         params: {
           id: targetId,
+          code: targetId,
         },
       });
     });
@@ -417,15 +521,15 @@ const handleDismissPopup = () => {
       onPanResponderRelease: (_, gesture) => {
         infoY.flattenOffset();
         const currentY = lastInfoY + gesture.dy;
-        
+
         // Find closest snap point
         const points = [
           { state: 'large', val: snapPoints.large },
           { state: 'default', val: snapPoints.default },
           { state: 'small', val: snapPoints.small },
         ];
-        
-        const closest = points.reduce((prev, curr) => 
+
+        const closest = points.reduce((prev, curr) =>
           Math.abs(curr.val - currentY) < Math.abs(prev.val - currentY) ? curr : prev
         );
 
@@ -442,11 +546,11 @@ const handleDismissPopup = () => {
   });
 
   // Filter List Results
-  const displayedList = visitedList.filter(item => 
+  const displayedList = visitedList.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-const displayedSavedList = savedList.filter(item =>
+  const displayedSavedList = savedList.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -460,6 +564,7 @@ const displayedSavedList = savedList.filter(item =>
     flag: string;
     coverPhoto?: string;
     subtext: string;
+    isTrip?: boolean;
   }
 
   const combinedList: CombinedListItem[] = [
@@ -482,20 +587,28 @@ const displayedSavedList = savedList.filter(item =>
       flag: item.flag,
       subtext: `Saved on ${formatSavedDate(item.timeAdded)}`,
     })),
+    ...tripsList.map((item) => ({
+      code: item.id,
+      name: item.title,
+      flag: item.flag,
+      coverPhoto: item.coverPhoto,
+      subtext: item.dateString,
+      isTrip: true,
+    })),
   ];
 
   const displayedCombinedList = combinedList.filter((item) =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-return (
-  <View style={styles.container}>
-    {/* Top Fade Gradient overlay replacing the white SafeArea bar */}
-    <LinearGradient
-      colors={['rgba(248, 249, 250, 0.95)', 'rgba(248, 249, 250, 0)']}
-      style={[styles.topFadeGradient, { height: insets.top + 40 }]}
-      pointerEvents="none"
-    />
+  return (
+    <View style={styles.container}>
+      {/* Top Fade Gradient overlay replacing the white SafeArea bar */}
+      <LinearGradient
+        colors={['rgba(248, 249, 250, 0.95)', 'rgba(248, 249, 250, 0)']}
+        style={[styles.topFadeGradient, { height: insets.top + 40 }]}
+        pointerEvents="none"
+      />
       <View style={styles.flex}>
         {/* Outer Map Scroll Layer */}
         <ScrollView
@@ -523,10 +636,10 @@ return (
                   const fillColor = isLived
                     ? styles.activeTextLived.color
                     : isVisited
-                    ? styles.activeTextVisited.color
-                    : isSaved
-                    ? '#FFBF00'
-                    : '#d3d3d3';
+                      ? styles.activeTextVisited.color
+                      : isSaved
+                        ? '#FFBF00'
+                        : '#d3d3d3';
                   return (
                     <Path
                       key={region.id}
@@ -547,7 +660,7 @@ return (
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: dimOpacity }]} />
 
         {/* ----- INFO SCREEN (Draggable Multi-state Modal) ----- */}
-        <Animated.View 
+        <Animated.View
           style={[styles.infoScreenOverlay, { transform: [{ translateY: infoY }] }]}
         >
           {/* Header Drag Handle */}
@@ -574,41 +687,41 @@ return (
             )}
           </View>
 
-{/* Nav Tabs */}
-<View style={styles.tabsContainer}>
-  {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => {
-    const isActive = activeTab === tab || activeTab === null;
+          {/* Nav Tabs */}
+          <View style={styles.tabsContainer}>
+            {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => {
+              const isActive = activeTab === tab || activeTab === null;
 
-    let activeTabStyle = styles.activeTabVisited;
-    let activeTextStyle = styles.activeTextVisited;
-    
-    if (tab === 'Saved') {
-      activeTabStyle = styles.activeTabSaved;
-      activeTextStyle = styles.activeTextSaved;
-    } else if (tab === 'Trips') {
-      activeTabStyle = styles.activeTabTrips;
-      activeTextStyle = styles.activeTextTrips;
-    } else if (tab === 'Lived') {
-      activeTabStyle = styles.activeTabLived;
-      activeTextStyle = styles.activeTextLived;
-    }
+              let activeTabStyle = styles.activeTabVisited;
+              let activeTextStyle = styles.activeTextVisited;
 
-    return (
-      <TouchableOpacity
-        key={tab}
-        style={[styles.tabButton, isActive && activeTabStyle]}
-        onPress={() => handleTabPress(tab)}
-      >
-        <Text style={[styles.tabText, isActive && activeTextStyle]}>{tab}</Text>
-      </TouchableOpacity>
-    );
-  })}
-</View>
+              if (tab === 'Saved') {
+                activeTabStyle = styles.activeTabSaved;
+                activeTextStyle = styles.activeTextSaved;
+              } else if (tab === 'Trips') {
+                activeTabStyle = styles.activeTabTrips;
+                activeTextStyle = styles.activeTextTrips;
+              } else if (tab === 'Lived') {
+                activeTabStyle = styles.activeTabLived;
+                activeTextStyle = styles.activeTextLived;
+              }
+
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tabButton, isActive && activeTabStyle]}
+                  onPress={() => handleTabPress(tab)}
+                >
+                  <Text style={[styles.tabText, isActive && activeTextStyle]}>{tab}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {/* Section Content Rendering */}
-<View style={styles.infoContent}>
+          <View style={styles.infoContent}>
             {activeTab === null ? (
-              listLoading || savedLoading || livedLoading ? (
+              listLoading || savedLoading || livedLoading || tripsLoading ? (
                 <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
               ) : displayedCombinedList.length > 0 ? (
                 <FlatList
@@ -617,7 +730,14 @@ return (
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
                   renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.listItemRow}>
+                    <TouchableOpacity
+                      style={styles.listItemRow}
+                      onPress={() => {
+                        if (item.isTrip) {
+                          router.push('../subtabs/Trips');
+                        }
+                      }}
+                    >
                       <View style={styles.listImageContainer}>
                         {item.coverPhoto ? (
                           <Image source={{ uri: item.coverPhoto }} style={styles.listImage} />
@@ -636,7 +756,7 @@ return (
                   )}
                 />
               ) : (
-                <Text style={styles.emptyStateText}>No countries found.</Text>
+                <Text style={styles.emptyStateText}>No countries or trips found.</Text>
               )
             ) : activeTab === 'Visited' ? (
               listLoading ? (
@@ -696,6 +816,40 @@ return (
               ) : (
                 <Text style={styles.emptyStateText}>No countries found.</Text>
               )
+            ) : activeTab === 'Trips' ? (
+              tripsLoading ? (
+                <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
+              ) : displayedTripsList.length > 0 ? (
+                <FlatList
+                  data={displayedTripsList}
+                  keyExtractor={(item) => item.id}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.listItemRow}
+                      onPress={() => router.push('../subtabs/Trips')}
+                    >
+                      <View style={styles.listImageContainer}>
+                        {item.coverPhoto ? (
+                          <Image source={{ uri: item.coverPhoto }} style={styles.listImage} />
+                        ) : (
+                          <View style={[styles.listImage, styles.fallbackImage]}>
+                            <Text style={styles.fallbackFlag}>{item.flag}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.listItemTextContainer}>
+                        <Text style={styles.listNameText}>{item.title}</Text>
+                        <Text style={styles.listSubText}>{item.dateString}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                    </TouchableOpacity>
+                  )}
+                />
+              ) : (
+                <Text style={styles.emptyStateText}>No trips found.</Text>
+              )
             ) : activeTab === 'Lived' ? (
               livedLoading ? (
                 <ActivityIndicator size="large" color="#007aff" style={{ marginTop: 20 }} />
@@ -731,77 +885,77 @@ return (
           </View>
         </Animated.View>
 
-{/* ----- COUNTRY DETAILS POPUP (Draggable & Resizable) ----- */}
-{selectedCountryCode && (
-  <Animated.View
-    pointerEvents="box-none"
-    style={[
-      styles.popupOverlay,
-      {
-        bottom: insets.bottom + 12,
-        transform: [{ translateY: popupSlideAnim }],
-      },
-    ]}
-  >
-    <View style={styles.popupCard}>
-      {/* Close (X) Button */}
-      <TouchableOpacity style={styles.closeButton} onPress={handleDismissPopup}>
-        <Ionicons name="close" size={22} color="#94a3b8" />
-      </TouchableOpacity>
+        {/* ----- COUNTRY DETAILS POPUP (Draggable & Resizable) ----- */}
+        {selectedCountryCode && (
+          <Animated.View
+            pointerEvents="box-none"
+            style={[
+              styles.popupOverlay,
+              {
+                bottom: insets.bottom + 12,
+                transform: [{ translateY: popupSlideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.popupCard}>
+              {/* Close (X) Button */}
+              <TouchableOpacity style={styles.closeButton} onPress={handleDismissPopup}>
+                <Ionicons name="close" size={22} color="#94a3b8" />
+              </TouchableOpacity>
 
-      <Pressable onPress={handlePopupContentPress}>
-        {selectedCountryData ? (
-          <>
-            <View style={styles.popupHeader}>
-              <Text style={styles.popupFlag}>{selectedCountryData.flag}</Text>
-              <View style={styles.popupTitleContainer}>
-                <Text style={styles.popupCountryName}>{selectedCountryData.name}</Text>
-                <Text style={styles.popupCapital}>Capital: {selectedCountryData.capital}</Text>
-              </View>
+              <Pressable onPress={handlePopupContentPress}>
+                {selectedCountryData ? (
+                  <>
+                    <View style={styles.popupHeader}>
+                      <Text style={styles.popupFlag}>{selectedCountryData.flag}</Text>
+                      <View style={styles.popupTitleContainer}>
+                        <Text style={styles.popupCountryName}>{selectedCountryData.name}</Text>
+                        <Text style={styles.popupCapital}>Capital: {selectedCountryData.capital}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.statsRow}>
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{selectedCountryData.totalTrips}</Text>
+                        <Text style={styles.statTitle}>Visits</Text>
+                      </View>
+                      <View style={styles.statDivider} />
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{selectedCountryData.daysSpent}</Text>
+                        <Text style={styles.statTitle}>Days Spent</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.citiesContainer}>
+                      <Text style={styles.citiesLabel}>Visited Cities:</Text>
+                      <Text style={styles.citiesList} numberOfLines={2}>
+                        {selectedCountryData.visitedCities.length > 0
+                          ? selectedCountryData.visitedCities.join(', ')
+                          : 'Cities feature coming soon!'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.addButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleAddNewVisit();
+                      }}
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
+                      <Text style={styles.addButtonText}>Add New Visit</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#007aff" />
+                    <Text style={styles.loadingText}>Loading details...</Text>
+                  </View>
+                )}
+              </Pressable>
             </View>
-
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{selectedCountryData.totalTrips}</Text>
-                <Text style={styles.statTitle}>Visits</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{selectedCountryData.daysSpent}</Text>
-                <Text style={styles.statTitle}>Days Spent</Text>
-              </View>
-            </View>
-
-            <View style={styles.citiesContainer}>
-              <Text style={styles.citiesLabel}>Visited Cities:</Text>
-              <Text style={styles.citiesList} numberOfLines={2}>
-                {selectedCountryData.visitedCities.length > 0
-                  ? selectedCountryData.visitedCities.join(', ')
-                  : 'Cities feature coming soon!'}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleAddNewVisit();
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
-              <Text style={styles.addButtonText}>Add New Visit</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#007aff" />
-            <Text style={styles.loadingText}>Loading details...</Text>
-          </View>
+          </Animated.View>
         )}
-      </Pressable>
-    </View>
-  </Animated.View>
-)}
       </View>
     </View>
   );
@@ -830,7 +984,7 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 50,
   },
-  
+
   // Country Details Popup Styles
   popupOverlay: {
     position: 'absolute',
@@ -917,7 +1071,7 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 100,
   },
-dragHeader: {
+  dragHeader: {
     width: '100%',
     paddingVertical: 8, // Reduced from 16 to make the top handle area smaller
     alignItems: 'center',
@@ -964,7 +1118,7 @@ dragHeader: {
     flex: 1,
     paddingHorizontal: 16,
   },
-  
+
   // List Item Styles
   listItemRow: {
     flexDirection: 'row',
