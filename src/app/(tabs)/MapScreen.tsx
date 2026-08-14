@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { geoNaturalEarth1, geoPath } from 'd3-geo';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -69,7 +69,8 @@ interface CombinedListItem {
   flag: string;
   coverPhoto?: string | null;
   subtext: string;
-  isTrip?: boolean; // Added to differentiate routing
+  isTrip?: boolean;
+  category?: 'Visited' | 'Lived' | 'Saved' | 'Trips';
 }
 
 export default function MapScreen() {
@@ -189,6 +190,16 @@ export default function MapScreen() {
     setActiveTab((prev) => (prev === tab ? null : tab));
   };
 
+  // Ensures Info Screen resets to 'default' whenever the screen comes into focus (e.g. router.back())
+  useFocusEffect(
+    useCallback(() => {
+      // Only animate to default if no country popup is actively selected
+      if (!selectedCountryCode) {
+        animateInfoTo('default');
+      }
+    }, [selectedCountryCode])
+  );
+
   // Fetch data for the Visited List
   useEffect(() => {
     const fetchVisitedData = async () => {
@@ -235,7 +246,7 @@ export default function MapScreen() {
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-// Fetch data for the Saved List
+  // Fetch data for the Saved List
   useEffect(() => {
     const fetchSavedData = async () => {
       setSavedLoading(true);
@@ -270,7 +281,7 @@ export default function MapScreen() {
     fetchSavedData();
   }, [getSavedCountries]);
 
-// Process Trips List Data
+  // Process Trips List Data
   useEffect(() => {
     const processTripsData = async () => {
       setTripsLoading(true);
@@ -324,7 +335,7 @@ export default function MapScreen() {
     item.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-// Fetch data for the Lived List
+  // Fetch data for the Lived List
   useEffect(() => {
     const fetchLivedData = async () => {
       setLivedLoading(true);
@@ -475,7 +486,9 @@ export default function MapScreen() {
   const handleDismissPopup = () => {
     if (selectedCountryCode) {
       slideOutPopup(() => {
-        animateInfoTo('default'); // Brings Info Popup back into 'default' mode after popup exits
+        requestAnimationFrame(() => {
+          animateInfoTo('default'); // Brings Info Popup back into 'default' mode after popup exits
+        });
       });
     }
   };
@@ -561,15 +574,6 @@ export default function MapScreen() {
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  interface CombinedListItem {
-    code: string;
-    name: string;
-    flag: string;
-    coverPhoto?: string;
-    subtext: string;
-    isTrip?: boolean;
-  }
-
   const combinedList: CombinedListItem[] = [
     ...visitedList.map((item) => ({
       code: item.code,
@@ -577,18 +581,21 @@ export default function MapScreen() {
       flag: item.flag,
       coverPhoto: item.coverPhoto,
       subtext: `Visited ${item.totalTrips} ${item.totalTrips === 1 ? 'time' : 'times'}`,
+      category: 'Visited' as const,
     })),
     ...livedList.map((item) => ({
       code: item.code,
       name: item.name,
       flag: item.flag,
       subtext: `Lived here since ${formatSavedDate(item.timeAdded)}`,
+      category: 'Lived' as const,
     })),
     ...savedList.map((item) => ({
       code: item.code,
       name: item.name,
       flag: item.flag,
       subtext: `Saved on ${formatSavedDate(item.timeAdded)}`,
+      category: 'Saved' as const,
     })),
     ...tripsList.map((item) => ({
       code: item.id,
@@ -597,6 +604,7 @@ export default function MapScreen() {
       coverPhoto: item.coverPhoto,
       subtext: item.dateString,
       isTrip: true,
+      category: 'Trips' as const,
     })),
   ];
 
@@ -713,8 +721,8 @@ export default function MapScreen() {
           {/* Nav Tabs */}
           <View style={styles.tabsContainer}>
             {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => {
-              // CHANGE: Only mark active if activeTab strictly equals this tab
               const isActive = activeTab === tab;
+              const isAllSelected = activeTab === null;
 
               let activeTabStyle = styles.activeTabVisited;
               let activeTextStyle = styles.activeTextVisited;
@@ -730,13 +738,16 @@ export default function MapScreen() {
                 activeTextStyle = styles.activeTextLived;
               }
 
+              // Apply color style if the tab is explicitly active OR if no tabs are selected
+              const showColor = isActive || isAllSelected;
+
               return (
                 <TouchableOpacity
                   key={tab}
-                  style={[styles.tabButton, isActive && activeTabStyle]}
+                  style={[styles.tabButton, showColor && activeTabStyle]}
                   onPress={() => handleTabPress(tab)}
                 >
-                  <Text style={[styles.tabText, isActive && activeTextStyle]}>{tab}</Text>
+                  <Text style={[styles.tabText, showColor && activeTextStyle]}>{tab}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -753,31 +764,50 @@ export default function MapScreen() {
                   keyExtractor={(item, index) => `${item.code}-${index}`}
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.listItemRow}
-                      onPress={() => {
-                        if (item.isTrip) {
-                          router.push('../subtabs/Trips');
-                        }
-                      }}
-                    >
-                      <View style={styles.listImageContainer}>
-                        {item.coverPhoto ? (
-                          <Image source={{ uri: item.coverPhoto }} style={styles.listImage} />
-                        ) : (
-                          <View style={[styles.listImage, styles.fallbackImage]}>
-                            <Text style={styles.fallbackFlag}>{item.flag}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.listItemTextContainer}>
-                        <Text style={styles.listNameText}>{item.name}</Text>
-                        <Text style={styles.listSubText}>{item.subtext}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
-                    </TouchableOpacity>
-                  )}
+                  renderItem={({ item }) => {
+                    let categoryBg = '#f1f5f9';
+                    let categoryBorder = '#e2e8f0';
+
+                    if (item.category === 'Visited') {
+                      categoryBg = '#eef6ff';
+                      categoryBorder = '#d0e5ff';
+                    } else if (item.category === 'Saved') {
+                      categoryBg = '#fef9c3';
+                      categoryBorder = '#ffec5c';
+                    } else if (item.category === 'Trips') {
+                      categoryBg = '#f3e8ff';
+                      categoryBorder = '#e9d5ff';
+                    } else if (item.category === 'Lived') {
+                      categoryBg = '#ccfbf1';
+                      categoryBorder = '#99f6e4';
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        style={styles.listItemRow}
+                        onPress={() => {
+                          if (item.isTrip) {
+                            router.push('../subtabs/Trips');
+                          }
+                        }}
+                      >
+                        <View style={styles.listImageContainer}>
+                          {item.coverPhoto ? (
+                            <Image source={{ uri: item.coverPhoto }} style={styles.listImage} />
+                          ) : (
+                            <View style={[styles.listImage, styles.fallbackImage, { backgroundColor: categoryBg, borderColor: categoryBorder }]}>
+                              <Text style={styles.fallbackFlag}>{item.flag}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.listItemTextContainer}>
+                          <Text style={styles.listNameText}>{item.name}</Text>
+                          <Text style={styles.listSubText}>{item.subtext}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+                      </TouchableOpacity>
+                    );
+                  }}
                 />
               ) : (
                 <Text style={styles.emptyStateText}>No countries or trips found.</Text>
