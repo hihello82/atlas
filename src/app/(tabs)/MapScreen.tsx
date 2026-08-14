@@ -235,7 +235,7 @@ export default function MapScreen() {
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
-  // Fetch data for the Saved List
+// Fetch data for the Saved List
   useEffect(() => {
     const fetchSavedData = async () => {
       setSavedLoading(true);
@@ -267,17 +267,14 @@ export default function MapScreen() {
       }
     };
 
-    if (activeTab === 'Saved' || activeTab === null) {
-      fetchSavedData();
-    }
-  }, [activeTab, getSavedCountries]);
+    fetchSavedData();
+  }, [getSavedCountries]);
 
-  // Add this useEffect to process trips
+// Process Trips List Data
   useEffect(() => {
     const processTripsData = async () => {
       setTripsLoading(true);
       try {
-        // Allowed Firestore call to fetch flags from app_data
         const countryDocRef = doc(db, 'app_data', 'countries');
         const docSnap = await getDoc(countryDocRef);
         const rawList = docSnap.exists() ? docSnap.data().countries || [] : [];
@@ -309,17 +306,25 @@ export default function MapScreen() {
       }
     };
 
-    if (activeTab === 'Trips' || activeTab === null) {
-      processTripsData();
-    }
-  }, [activeTab, userTrips]);
+    processTripsData();
+  }, [userTrips]);
+
+  const tripCountryCodes = useMemo(() => {
+    const codesSet = new Set<string>();
+    userTrips.forEach((trip) => {
+      if (trip.countries) {
+        trip.countries.forEach((code: string) => codesSet.add(code));
+      }
+    });
+    return codesSet;
+  }, [userTrips]);
 
   // Filter Trips List Results
   const displayedTripsList = tripsList.filter(item =>
     item.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Fetch data for the Lived List
+// Fetch data for the Lived List
   useEffect(() => {
     const fetchLivedData = async () => {
       setLivedLoading(true);
@@ -351,10 +356,8 @@ export default function MapScreen() {
       }
     };
 
-    if (activeTab === 'Lived' || activeTab === null) {
-      fetchLivedData();
-    }
-  }, [activeTab, getLivedCountries]);
+    fetchLivedData();
+  }, [getLivedCountries]);
 
   const formattedRegions = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
@@ -630,16 +633,36 @@ export default function MapScreen() {
               <Svg width={MAP_WIDTH} height={MAP_HEIGHT} viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}>
                 {formattedRegions.map((region) => {
                   if (!region.path) return null;
+
                   const isLived = livedCountryCodes[region.id];
                   const isVisited = visitedCountryCodes[region.id];
                   const isSaved = savedCountryCodes[region.id];
-                  const fillColor = isLived
-                    ? styles.activeTextLived.color
-                    : isVisited
-                      ? styles.activeTextVisited.color
-                      : isSaved
-                        ? '#FFBF00'
-                        : '#d3d3d3';
+                  const isTrip = tripCountryCodes.has(region.id);
+
+                  let fillColor = '#d3d3d3';
+
+                  // Highlight depending on active tab selected
+                  if (activeTab === 'Visited') {
+                    if (isVisited) fillColor = styles.activeTextVisited.color;
+                  } else if (activeTab === 'Saved') {
+                    if (isSaved) fillColor = '#FFBF00';
+                  } else if (activeTab === 'Trips') {
+                    if (isTrip) fillColor = styles.activeTextTrips.color;
+                  } else if (activeTab === 'Lived') {
+                    if (isLived) fillColor = styles.activeTextLived.color;
+                  } else {
+                    // Default State (activeTab === null): Highlight all sections
+                    if (isLived) {
+                      fillColor = styles.activeTextLived.color;
+                    } else if (isVisited) {
+                      fillColor = styles.activeTextVisited.color;
+                    } else if (isSaved) {
+                      fillColor = '#FFBF00';
+                    } else if (isTrip) {
+                      fillColor = styles.activeTextTrips.color;
+                    }
+                  }
+
                   return (
                     <Path
                       key={region.id}
@@ -690,7 +713,8 @@ export default function MapScreen() {
           {/* Nav Tabs */}
           <View style={styles.tabsContainer}>
             {['Visited', 'Saved', 'Trips', 'Lived'].map((tab) => {
-              const isActive = activeTab === tab || activeTab === null;
+              // CHANGE: Only mark active if activeTab strictly equals this tab
+              const isActive = activeTab === tab;
 
               let activeTabStyle = styles.activeTabVisited;
               let activeTextStyle = styles.activeTextVisited;

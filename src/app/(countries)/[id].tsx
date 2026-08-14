@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Image,
   Platform,
@@ -15,9 +14,50 @@ import MapView, { PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import geoJsonData from '../../../assets/custom.geo.json';
-import { db } from '../../../config/firebaseConfig';
 import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
+
+// Computes a camera region that fits a set of lat/lng points.
+// Unlike MapView's built-in fitToCoordinates, this handles countries whose
+// geometry crosses the antimeridian (e.g. Russia, Fiji) by shifting
+// longitudes into a continuous range before taking min/max, instead of
+// naively spanning -180..180 (which would zoom out to show the whole globe).
+function getFittedRegion(
+  coordinates: { latitude: number; longitude: number }[],
+  paddingFactor = 1.4
+) {
+  if (coordinates.length === 0) return null;
+
+  const lats = coordinates.map((c) => c.latitude);
+  const rawLngs = coordinates.map((c) => c.longitude);
+
+  const naiveSpan = Math.max(...rawLngs) - Math.min(...rawLngs);
+
+  // If the naive span is huge, this geometry likely crosses the antimeridian.
+  // Shift negative longitudes by +360 so the ring becomes contiguous, e.g.
+  // [170, 178, -179, -170] -> [170, 178, 181, 190].
+  const lngs =
+    naiveSpan > 180 ? rawLngs.map((lng) => (lng < 0 ? lng + 360 : lng)) : rawLngs;
+
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+
+  const latDelta = Math.max((maxLat - minLat) * paddingFactor, 1);
+  const lngDelta = Math.max((maxLng - minLng) * paddingFactor, 1);
+
+  let centerLng = (minLng + maxLng) / 2;
+  // Normalize back into the standard -180..180 range.
+  centerLng = ((centerLng + 540) % 360) - 180;
+
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: centerLng,
+    latitudeDelta: latDelta,
+    longitudeDelta: Math.min(lngDelta, 359),
+  };
+}
 
 export default function CountryDetailScreen() {
   const router = useRouter();
@@ -25,11 +65,14 @@ export default function CountryDetailScreen() {
     code: string;
   }>();
 
+  const mapRef = useRef<MapView>(null);
+
   const { getVisitedCountryDetail, isCountrySaved, toggleSaveCountry } = useUser();
 
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   const [countryUserData, setCountryUserData] = useState<{
     totalTrips: number;
@@ -48,42 +91,49 @@ export default function CountryDetailScreen() {
   );
 
   useEffect(() => {
-    if (!params.code) return;
+    // Wait until the native map view has actually finished initializing.
+    // Calling camera methods (or setting a region) before onMapReady fires
+    // can silently no-op, especially on Android, leaving the map stuck on
+    // its generic fallback region.
+    if (!params.code || !mapRef.current || !isMapReady) return;
 
-    const fetchCountryDetail = async () => {
-      try {
-        const docRef = doc(db, 'app_data', 'countries');
-        const docSnap = await getDoc(docRef);
+    const feature = geoJsonData.features.find(
+      (f: any) =>
+        f.properties?.iso_a3 === params.code ||
+        f.properties?.adm0_a3 === params.code
+    );
 
-        if (docSnap.exists()) {
-          const rawData = docSnap.data().countries || docSnap.data().data || [];
-          const countriesList = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+    if (feature) {
+      // Extract geometry coordinates (handles Polygon & MultiPolygon)
+      let coordinates: { latitude: number; longitude: number }[] = [];
 
-          const match = countriesList.find(
-            (c: any) => (c.cca3 || c.codes?.alpha_3) === params.code
-          );
-
-          setDetails(match || null);
-        }
-
-        const userData = await getVisitedCountryDetail(params.code);
-        setCountryUserData({
-          totalTrips: userData.totalTrips,
-          daysSpent: userData.daysSpent,
-          visitedCities: userData.visitedCities,
-        });
-
-        const savedStatus = await isCountrySaved(params.code);
-        setIsSaved(savedStatus);
-      } catch (err) {
-        console.error('Failed to fetch country detail:', err);
-      } finally {
-        setLoading(false);
+      if (feature.geometry.type === 'Polygon') {
+        // Cast to standard coordinate ring type: Array<[longitude, latitude]>
+        const rings = feature.geometry.coordinates as [number, number][][];
+        coordinates = rings[0].map(([lng, lat]) => ({
+          latitude: lat,
+          longitude: lng,
+        }));
+      } else if (feature.geometry.type === 'MultiPolygon') {
+        // Cast MultiPolygon coordinates: Array<PolygonRings>
+        const polygons = feature.geometry.coordinates as [number, number][][][];
+        coordinates = polygons.flatMap((polygon) =>
+          polygon[0].map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))
+        );
       }
-    };
 
-    fetchCountryDetail();
-  }, [params.code, getVisitedCountryDetail, isCountrySaved]);
+      // Use a dateline-safe fit instead of MapView's built-in
+      // fitToCoordinates, which naively spans -180..180 for countries like
+      // Russia or Fiji and ends up zooming out to show the whole world.
+      const region = getFittedRegion(coordinates);
+      if (region) {
+        mapRef.current.animateToRegion(region, 500);
+      }
+    }
+  }, [params.code, isMapReady]);
 
   const handleStarPress = async () => {
     const nextSavedState = await toggleSaveCountry(params.code, countryName);
@@ -116,40 +166,40 @@ export default function CountryDetailScreen() {
           />
           <View style={styles.heroOverlay} />
 
-{/* Top Navigation Row */}
-<SafeAreaView style={styles.topNav}>
-  <TouchableOpacity
-    style={[sharedStyles.backButton, styles.customNavBtn]}
-    onPress={() => router.back()}
-    activeOpacity={0.8}
-  >
-    <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-  </TouchableOpacity>
+          {/* Top Navigation Row */}
+          <SafeAreaView style={styles.topNav}>
+            <TouchableOpacity
+              style={[sharedStyles.backButton, styles.customNavBtn]}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
 
-  <View style={styles.rightNavButtons}>
-    {isCountryInGeoJson && (
-      <TouchableOpacity
-        style={[sharedStyles.backButton, styles.customNavBtn]}
-        onPress={handleStarPress}
-        activeOpacity={0.8}
-      >
-        <Ionicons
-          name={isSaved ? 'star' : 'star-outline'}
-          size={20}
-          color={isSaved ? '#FFBF00' : '#FFFFFF'}
-        />
-      </TouchableOpacity>
-    )}
+            <View style={styles.rightNavButtons}>
+              {isCountryInGeoJson && (
+                <TouchableOpacity
+                  style={[sharedStyles.backButton, styles.customNavBtn]}
+                  onPress={handleStarPress}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={isSaved ? 'star' : 'star-outline'}
+                    size={20}
+                    color={isSaved ? '#FFBF00' : '#FFFFFF'}
+                  />
+                </TouchableOpacity>
+              )}
 
-    <TouchableOpacity
-      style={[sharedStyles.backButton, styles.customNavBtn]}
-      onPress={() => {}}
-      activeOpacity={0.8}
-    >
-      <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
-    </TouchableOpacity>
-  </View>
-</SafeAreaView>
+              <TouchableOpacity
+                style={[sharedStyles.backButton, styles.customNavBtn]}
+                onPress={() => { }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
 
           {/* Hero Country Details */}
           <View style={styles.heroTitleContainer}>
@@ -164,14 +214,16 @@ export default function CountryDetailScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.mapCard}>
             <MapView
+              ref={mapRef}
               style={styles.map}
               provider={Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE}
-              region={{
+              initialRegion={{
                 latitude: latitude,
                 longitude: longitude,
                 latitudeDelta: 15.0,
                 longitudeDelta: 15.0,
               }}
+              onMapReady={() => setIsMapReady(true)}
               scrollEnabled={false}
               zoomEnabled={false}
             />
