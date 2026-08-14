@@ -13,7 +13,9 @@ import {
 import MapView, { PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { doc, getDoc } from 'firebase/firestore';
 import geoJsonData from '../../../assets/custom.geo.json';
+import { db } from '../../../config/firebaseConfig';
 import { useUser } from '../context/UserContext';
 import { colors, sharedStyles } from '../styles';
 
@@ -134,6 +136,39 @@ export default function CountryDetailScreen() {
       }
     }
   }, [params.code, isMapReady]);
+
+  useEffect(() => {
+  if (!params.code) return;
+
+  const fetchCountryData = async () => {
+    setLoading(true);
+    try {
+      const countryDocRef = doc(db, 'app_data', 'countries');
+      const docSnap = await getDoc(countryDocRef);
+      const rawList = docSnap.exists() ? docSnap.data().countries || [] : [];
+
+      const match = rawList.find(
+        (c: any) => c.cca3 === params.code || c.cca2 === params.code
+      );
+      setDetails(match || null);
+
+      const visitedDetails = await getVisitedCountryDetail(params.code);
+      setCountryUserData({
+        totalTrips: visitedDetails?.totalTrips || 0,
+        daysSpent: visitedDetails?.daysSpent || 0,
+        visitedCities: visitedDetails?.visitedCities || [],
+      });
+
+      setIsSaved(await isCountrySaved(params.code));
+    } catch (err) {
+      console.error('Failed to load country details:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchCountryData();
+}, [params.code, getVisitedCountryDetail, isCountrySaved]);
 
   const handleStarPress = async () => {
     const nextSavedState = await toggleSaveCountry(params.code, countryName);
