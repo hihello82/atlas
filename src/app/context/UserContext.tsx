@@ -84,6 +84,10 @@ export interface ActivityItem {
   dateObj: Date;
   dateString: string;
   image: string;
+  tripId?: string;
+  countryCode?: string;
+  countryName?: string;
+  type?: 'trip' | 'country';
 }
 
 export interface TripItem {
@@ -393,6 +397,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const fetchUserProfile = useCallback(async (uid: string): Promise<UserProfile | null> => {
     try {
+      // 1. Fetch full country list for name lookup
+      let countryNameMap: Record<string, string> = {};
+      try {
+        const countryDocRef = doc(db, 'app_data', 'countries');
+        const docSnap = await getDoc(countryDocRef);
+        if (docSnap.exists()) {
+          const rawList = docSnap.data().countries || [];
+          rawList.forEach((c: any) => {
+            if (c.cca3 && c.name?.common) countryNameMap[c.cca3] = c.name.common;
+            if (c.cca2 && c.name?.common) countryNameMap[c.cca2] = c.name.common;
+          });
+        }
+      } catch (e) {
+        console.warn('Country lookup map fetch error:', e);
+      }
+
+      const helperGetCountryName = (code: string) => {
+        if (!code) return '';
+        return countryNameMap[code] || code;
+      };
+
       const userRef = doc(db, 'users', uid);
       const snap = await getDoc(userRef);
 
@@ -435,10 +460,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (recentDate) {
           const jsDate = recentDate.toDate ? recentDate.toDate() : new Date(recentDate);
           if (jsDate >= sixMonthsAgo) {
+            const resolvedName = data.countryName || helperGetCountryName(cca3);
             activities.push({
               id: `country-${docSnap.id}`,
-              title: `Visited ${data.countryName || docSnap.id}`,
-              location: data.countryName || docSnap.id,
+              title: `Visited ${resolvedName}`,
+              location: resolvedName,
+              countryCode: cca3,
+              countryName: resolvedName,
+              type: 'country',
               dateObj: jsDate,
               dateString: formatDateRange(recentDate, endDate),
               image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&q=80',
@@ -461,10 +490,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (startDate) {
           const jsDate = startDate.toDate ? startDate.toDate() : new Date(startDate);
           if (jsDate >= sixMonthsAgo) {
+            const primaryCountryCode = data.countries?.[0] || '';
+
+            // Map country codes array to full names
+            const fullCountryNames = data.countries
+              ? data.countries.map((cCode: string) => helperGetCountryName(cCode)).join(', ')
+              : helperGetCountryName(primaryCountryCode);
+
+            const displayLocation = data.countryName || fullCountryNames || 'Trip';
+
             activities.push({
               id: `trip-${docSnap.id}`,
+              tripId: docSnap.id,
               title: data.title || 'Trip',
-              location: data.countries?.join(', ') || 'Multiple Locations',
+              location: displayLocation,
+              countryCode: primaryCountryCode,
+              countryName: displayLocation,
+              type: 'trip',
               dateObj: jsDate,
               dateString: formatDateRange(startDate, endDate),
               image: data.coverPhoto || 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=500&q=80',

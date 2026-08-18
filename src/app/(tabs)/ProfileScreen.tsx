@@ -223,36 +223,62 @@ export default function ProfileScreen() {
           {recentActivities.length > 0 ? (
             recentActivities.map((activity) => {
               const act = activity as any;
+              const tripId = act.tripId || (act.type === 'trip' ? act.id.replace('trip-', '') : null);
+              const countryCode = act.countryCode || (act.type === 'country' ? act.id.replace('country-', '') : '');
+              const countryDisplayName = act.countryName || act.location || countryCode;
+
               return (
-                <Pressable
-                  key={activity.id}
-                  style={styles.activityCard}
-                  onPress={() => {
-                    if (act.type === 'trip' || act.tripId) {
-                      router.push({
-                        pathname: '../subtabs/[tripid]',
-                        params: { tripid: act.tripId || activity.id },
-                      });
-                    } else {
-                      router.push({
-                        pathname: '/(countries)/[id]',
-                        params: {
-                          id: act.countryCode || activity.id,
-                          code: act.countryCode || activity.id,
-                        },
-                      });
-                    }
-                  }}
-                >
+                <View key={activity.id} style={styles.activityCard}>
                   <Image source={{ uri: activity.image }} style={styles.activityImage} />
-                  <View style={styles.activityInfo}>
-                    <View style={styles.activityLocation}>
-                      <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
-                      <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
+
+                  <View style={styles.activityMainContent}>
+                    <View style={styles.activityHeaderRow}>
+                      {/* Left Side: Clickable Trip & Country Info */}
+                      <View style={styles.activityTextContainer}>
+                        {/* Trip Title Target */}
+                        {tripId ? (
+                          <Pressable
+                            onPress={() =>
+                              router.push({
+                                pathname: '../subtabs/[tripid]',
+                                params: { tripid: tripId },
+                              })
+                            }
+                            hitSlop={4}
+                          >
+                            <Text style={styles.tripTitleText}>{activity.title}</Text>
+                          </Pressable>
+                        ) : (
+                          <Text style={styles.tripTitleText}>{activity.title}</Text>
+                        )}
+
+                        {/* Country Name Target */}
+                        {countryCode ? (
+                          <Pressable
+                            style={styles.countryBadgeTouch}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/(countries)/[id]',
+                                params: {
+                                  id: countryCode,
+                                  code: countryCode,
+                                },
+                              })
+                            }
+                            hitSlop={4}
+                          >
+                            <Text style={styles.countryNameText}>{countryDisplayName}</Text>
+                          </Pressable>
+                        ) : (
+                          <Text style={styles.countryNameText}>{countryDisplayName}</Text>
+                        )}
+                      </View>
+
+                      {/* Right Side: Date String */}
+                      <Text style={styles.dateText}>{activity.dateString}</Text>
                     </View>
-                    <Text style={styles.dateText}>{activity.dateString}</Text>
                   </View>
-                </Pressable>
+                </View>
               );
             })
           ) : (
@@ -267,6 +293,46 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+
+  recentActivityContainer: { width: '100%', marginTop: 10 },
+  sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: colors.titleDark, marginBottom: 15, textAlign: 'left' },
+  activityCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: 12,
+  },
+  activityImage: { width: 56, height: 56, borderRadius: 12, marginRight: 12 },
+  activityMainContent: { flex: 1 },
+  activityHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  activityTextContainer: { flex: 1, paddingRight: 4 },
+  tripTitleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.titleDark,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  countryBadgeTouch: {
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+  },
+  countryNameText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0084C7',
+  },
+  dateText: { fontSize: 12, color: colors.placeholderGray, textAlign: 'right' },
+
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: {
     paddingVertical: 40,
@@ -335,15 +401,10 @@ const styles = StyleSheet.create({
   savedButton: { backgroundColor: '#fef9c3', borderColor: '#ffec5c' },
   savedButtonText: { fontSize: 14, fontWeight: '600', color: '#ca8a04' },
 
-  recentActivityContainer: { width: '100%', marginTop: 10 },
-  sectionTitle: { fontSize: 22, fontFamily: 'Playfair Display', fontWeight: '600', letterSpacing: 0.25, color: colors.titleDark, marginBottom: 15, textAlign: 'left' },
-  activityCard: { backgroundColor: colors.white, borderRadius: 16, padding: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.borderLight, marginBottom: 15 },
-  activityImage: { width: 60, height: 60, borderRadius: 12, marginRight: 15 },
   activityInfo: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   activityLocation: { flex: 1 },
   countryText: { fontSize: 16, fontWeight: 'bold', color: colors.bodyDark, marginBottom: 4 },
   cityText: { fontSize: 14, color: colors.subtitleGray },
-  dateText: { fontSize: 13, color: colors.placeholderGray },
   emptyActivityContainer: { paddingVertical: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.borderLight },
   emptyActivityText: { fontSize: 15, color: colors.mutedGray, fontWeight: '500' },
 });
