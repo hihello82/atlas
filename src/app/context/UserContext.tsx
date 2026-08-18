@@ -62,11 +62,21 @@ export interface UserProfile {
   isGoogleSignIn?: boolean;
 }
 
+// A "broad" visit that only specifies a month or a year rather than exact
+// arrival/departure dates. When present, arrivalDate/departureDate are left
+// null and the visit does not contribute to totalDaysVisited.
+export interface VisitPeriod {
+  type: 'month' | 'year';
+  year: number;
+  month?: number; // 1-12, only present when type === 'month'
+}
+
 export interface TripCountryItem {
   countryCode: string;
   countryName?: string;
   arrivalDate?: any;
   departureDate?: any;
+  visitPeriod?: VisitPeriod | null;
   coverPhoto?: string;
   description?: string;
 }
@@ -96,6 +106,7 @@ export interface TripItem {
   description?: string;
   startDate?: any;
   endDate?: any;
+  visitPeriod?: VisitPeriod | null;
   countries?: string[];
   cities?: string[];
   photos?: { url: string; caption: string }[];
@@ -108,6 +119,12 @@ export interface AddTripVisitParams {
   name: string;
   startDate?: string;
   endDate?: string;
+  // 'range' = exact arrival/departure dates (default behavior).
+  // 'month' / 'year' = a broad period; no arrivalDate/departureDate is
+  // stored and totalDaysVisited is left untouched.
+  dateMode: 'range' | 'month' | 'year';
+  selectedMonth?: string; // '01'-'12', used when dateMode === 'month'
+  selectedYear?: string; // used when dateMode === 'month' or 'year'
   tripName?: string;
   notes?: string;
   selectedTripId: string;
@@ -186,6 +203,26 @@ function flattenForFirestore(
     }
   }
   return result;
+}
+
+/**
+ * Parses a date-only string ("YYYY-MM-DD", "YYYY-MM", or "YYYY") into a
+ * *local* Date object.
+ *
+ * This exists because `new Date("2023-08-21")` is parsed by JS as UTC
+ * midnight (per the ISO-8601 spec), not local midnight. When that value is
+ * later displayed in any timezone behind UTC (all of the US), it renders as
+ * the *previous* day in the evening (e.g. "Aug 20, 8:00 PM" instead of
+ * "Aug 21"). Building the Date from its numeric parts instead uses the
+ * local timezone, so the calendar day the user picked is the day that gets
+ * stored.
+ */
+function parseLocalDateString(dateStr: string): Date {
+  const [yearStr, monthStr, dayStr] = dateStr.split('-');
+  const year = Number(yearStr);
+  const month = monthStr ? Number(monthStr) : 1;
+  const day = dayStr ? Number(dayStr) : 1;
+  return new Date(year, month - 1, day);
 }
 
 function deepMergeProfile<T extends Record<string, any>>(
@@ -573,13 +610,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         if (!countrySnap.exists()) return false;
 
-        const existingVisits: { arrivalDate: any; departureDate: any }[] =
+        const existingVisits: { arrivalDate?: any; departureDate?: any }[] =
           countrySnap.data().visits || [];
 
-        const selectedStart = new Date(startDate).getTime();
-        const selectedEnd = endDate ? new Date(endDate).getTime() : selectedStart;
+        const selectedStart = parseLocalDateString(startDate).getTime();
+        const selectedEnd = endDate ? parseLocalDateString(endDate).getTime() : selectedStart;
 
         return existingVisits.some((visit) => {
+          // Broad (month/year) visits don't carry exact arrival/departure
+          // dates, so there's nothing meaningful to compare against.
+          if (!visit.arrivalDate) return false;
+
           const existingStart = visit.arrivalDate?.toDate
             ? visit.arrivalDate.toDate().getTime()
             : new Date(visit.arrivalDate).getTime();
@@ -603,6 +644,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       name,
       startDate,
       endDate,
+      dateMode,
+      selectedMonth,
+      selectedYear,
       tripName,
       notes,
       selectedTripId,
@@ -611,8 +655,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const uid = auth.currentUser?.uid;
       if (!uid) throw new Error('UserContext: no authenticated user.');
 
-      const arrivalTimestamp = startDate ? Timestamp.fromDate(new Date(startDate)) : null;
-      const departureTimestamp = endDate ? Timestamp.fromDate(new Date(endDate)) : null;
+      const isRangeMode = dateMode === 'range';
+
+      // Exact-date fields (range mode only).
+      let arrivalTimestamp: Timestamp | null = null;
+      let departureTimestamp: Timestamp | null = null;
+      let visitDays = 0;
+
+      // Broad-period field (month/year mode only).
+      let visitPeriod: VisitPeriod | null = null;
+
+      if (isRangeMode) {
+        arrivalTimestamp = startDate ? Timestamp.fromDate(parseLocalDateString(startDate)) : null;
+        departureTimestamp = endDate
+          ? Timestamp.fromDate(parseLocalDateString(endDate))
+          : arrivalTimestamp;
+
+        if (startDate) {
+          const startMs = parseLocalDateString(startDate).getTime();
+          const endMs = endDate ? parseLocalDateString(endDate).getTime() : startMs;
+          visitDays = Math.floor(Math.abs(endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+        }
+      } else if (dateMode === 'month' && selectedYear && selectedMonth) {
+        visitPeriod = { type: 'month', year: Number(selectedYear), month: Number(selectedMonth) };
+      } else if (dateMode === 'year' && selectedYear) {
+        visitPeriod = { type: 'year', year: Number(selectedYear) };
+      }
+
       const coverPhotoURL = uploadedPhotosData.length > 0 ? uploadedPhotosData[0].url : null;
       let targetTripId = selectedTripId;
 
@@ -620,30 +689,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const countryRef = doc(db, 'users', uid, 'countries', code);
       const countrySnap = await getDoc(countryRef);
 
-      let visitDays = 1;
-      if (startDate && endDate) {
-        const diffTime = Math.abs(new Date(endDate).getTime() - new Date(startDate).getTime());
-        visitDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-      }
-
-      const newVisitObj = {
-        arrivalDate: arrivalTimestamp,
-        departureDate: departureTimestamp || arrivalTimestamp,
-      };
+      // For a broad month/year selection we don't have real arrival/departure
+      // dates, so we store the visitPeriod instead and leave those fields out.
+      const newVisitObj: Record<string, any> = isRangeMode
+        ? { arrivalDate: arrivalTimestamp, departureDate: departureTimestamp || arrivalTimestamp }
+        : { visitPeriod };
 
       if (countrySnap.exists()) {
         const existingData = countrySnap.data();
         const existingVisits = existingData.visits || [];
         const updatedVisits = [...existingVisits, newVisitObj];
 
-        await updateDoc(countryRef, {
+        const countryUpdates: Record<string, any> = {
           visitCount: increment(1),
           updatedAt: serverTimestamp(),
           visits: updatedVisits,
-          totalDaysVisited: increment(visitDays),
           photos: [...(existingData.photos || []), ...uploadedPhotosData],
           coverPhoto: existingData.coverPhoto || coverPhotoURL,
-        });
+        };
+        // Only bump totalDaysVisited for exact date ranges - a bare
+        // month/year selection shouldn't affect the day count.
+        if (visitDays > 0) {
+          countryUpdates.totalDaysVisited = increment(visitDays);
+        }
+
+        await updateDoc(countryRef, countryUpdates);
       } else {
         await setDoc(countryRef, {
           countryCode: code,
@@ -669,8 +739,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         await setDoc(newTripRef, {
           title: tripName,
           description: notes || '',
-          startDate: arrivalTimestamp,
-          endDate: departureTimestamp,
+          // Broad-period trips keep arrival/departure unset in the trip file
+          // and only log the visitPeriod, per the month/year mode above.
+          startDate: isRangeMode ? arrivalTimestamp : null,
+          endDate: isRangeMode ? (departureTimestamp || arrivalTimestamp) : null,
+          visitPeriod: isRangeMode ? null : visitPeriod,
           countries: [code],
           cities: [],
           photos: uploadedPhotosData,
@@ -699,8 +772,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
           {
             countryCode: code,
             countryName: name,
-            arrivalDate: arrivalTimestamp,
-            departureDate: departureTimestamp || arrivalTimestamp,
+            arrivalDate: isRangeMode ? arrivalTimestamp : null,
+            departureDate: isRangeMode ? (departureTimestamp || arrivalTimestamp) : null,
+            visitPeriod: isRangeMode ? null : visitPeriod,
             coverPhoto: coverPhotoURL,
             description: notes || '',
           },

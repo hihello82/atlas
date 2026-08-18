@@ -185,7 +185,8 @@ export default function AddTrip() {
       return marked;
     }
 
-    let curr = new Date(tempStartDate);
+    const [year, month, day] = tempStartDate.split('-').map(Number);
+    let curr = new Date(year, month - 1, day);
     const end = new Date(tempEndDate);
 
     while (curr <= end) {
@@ -204,7 +205,6 @@ export default function AddTrip() {
     return marked;
   };
 
-  // 2. Updated handleSave Validation
   const handleSave = async () => {
     if (!user || !code) return;
 
@@ -215,28 +215,23 @@ export default function AddTrip() {
     }
     setTripNameError(false);
 
-    // Derive date representation based on selected mode
-    let finalStartDate = startDate;
-    let finalEndDate = endDate;
-
-    if (dateMode === 'month') {
-      finalStartDate = `${selectedYear}-${selectedMonth}`;
-      finalEndDate = '';
-    } else if (dateMode === 'year') {
-      finalStartDate = selectedSingleYear;
-      finalEndDate = '';
-    }
-
-    if (!finalStartDate) return;
+    // Make sure something was actually selected for the current mode
+    if (dateMode === 'range' && !startDate) return;
+    if (dateMode === 'month' && (!selectedMonth || !selectedYear)) return;
+    if (dateMode === 'year' && !selectedSingleYear) return;
 
     setLoading(true);
 
-    // Check overlap via context handler
-    const isOverlapping = await checkDateOverlap(code, finalStartDate, finalEndDate);
-    if (isOverlapping) {
-      setHasOverlapError(true);
-      setLoading(false);
-      return;
+    // Overlap checking only applies to exact date ranges - a broad
+    // month/year selection has no concrete arrival/departure date to
+    // compare against existing visits.
+    if (dateMode === 'range') {
+      const isOverlapping = await checkDateOverlap(code, startDate, endDate);
+      if (isOverlapping) {
+        setHasOverlapError(true);
+        setLoading(false);
+        return;
+      }
     }
 
     setHasOverlapError(false);
@@ -248,9 +243,13 @@ export default function AddTrip() {
       await addTripVisit({
         code,
         name,
-        startDate: finalStartDate,
-        endDate: finalEndDate,
-        tripName: selectedTripId === 'new' ? tripName : '',
+        startDate: dateMode === 'range' ? startDate : undefined,
+        endDate: dateMode === 'range' ? endDate : undefined,
+        dateMode,
+        selectedMonth: dateMode === 'month' ? selectedMonth : undefined,
+        selectedYear:
+          dateMode === 'month' ? selectedYear : dateMode === 'year' ? selectedSingleYear : undefined,
+        tripName: selectedTripId === 'new' ? tripName : undefined,
         notes,
         selectedTripId,
         uploadedPhotosData,
