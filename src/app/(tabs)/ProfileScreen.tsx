@@ -53,7 +53,7 @@ export default function ProfileScreen() {
       </View>
     );
   }
- 
+
   return (
     <SafeAreaView style={sharedStyles.appContainer}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -68,11 +68,11 @@ export default function ProfileScreen() {
             style={styles.avatar}
           />
         </View>
- 
+
         {/* Name and Username */}
         <Text style={styles.displayName}>{fullName}</Text>
         <Text style={styles.username}>{formattedUsername}</Text>
- 
+
         {/* Hometown Badge / Button */}
         <Pressable
           style={({ pressed }) => [
@@ -83,7 +83,7 @@ export default function ProfileScreen() {
         >
           <Text style={styles.hometownText}>{hometownText}</Text>
         </Pressable>
- 
+
         {/* Followers & Following Row */}
         <View style={styles.statsRow}>
           <Pressable
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.statLabel}>Following</Text>
           </Pressable>
- 
+
           <Pressable
             style={({ pressed }) => [styles.statBox, pressed && sharedStyles.pressed]}
             onPress={() => router.push('../profileSubtabs/followers')}
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Followers</Text>
           </Pressable>
         </View>
- 
+
         {/* Action Buttons */}
         <View style={styles.actionButtonsRow}>
           <Pressable
@@ -119,7 +119,7 @@ export default function ProfileScreen() {
           >
             <Text style={styles.editButtonText}>Edit profile</Text>
           </Pressable>
- 
+
           <Pressable
             style={({ pressed }) => [
               styles.actionButton,
@@ -131,108 +131,130 @@ export default function ProfileScreen() {
             <Text style={styles.shareButtonText}>Share profile</Text>
           </Pressable>
         </View>
- 
-{/* Travel Trackers Cards (3 Column Layout) */}
-<View style={styles.cardsRow}>
-  <Pressable
-    style={({ pressed }) => [
-      styles.trackerCard,
-      styles.tripsCard,
-      pressed && sharedStyles.pressed,
-    ]}
-    onPress={() =>
-      router.push({
-        pathname: '/MapScreen',
-        params: { section: 'Trips' },
-      })
-    }
-  >
-    <Text style={[styles.cardValue, { color: '#9333ea' }]}>
-      {userProfile?.stats?.trips ?? 0}
-    </Text>
-    <Text style={styles.cardLabel}>Trips</Text>
-  </Pressable>
 
-  <Pressable
-    style={({ pressed }) => [
-      styles.trackerCard,
-      styles.visitedCard,
-      pressed && sharedStyles.pressed,
-    ]}
-    onPress={() =>
-      router.push({
-        pathname: '/MapScreen',
-        params: { section: 'Visited' },
-      })
-    }
-  >
-    <Text style={[styles.cardValue, { color: '#0084C7' }]}>
-      {userProfile?.stats?.countriesVisited ?? 0}
-    </Text>
-    <Text style={styles.cardLabel}>Countries</Text>
-  </Pressable>
+        {/* Travel Trackers Cards (3 Column Layout) */}
+        <View style={styles.cardsRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.trackerCard,
+              styles.tripsCard,
+              pressed && sharedStyles.pressed,
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: '/MapScreen',
+                params: { section: 'Trips' },
+              })
+            }
+          >
+            <Text style={[styles.cardValue, { color: '#9333ea' }]}>
+              {userProfile?.stats?.trips ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Trips</Text>
+          </Pressable>
 
-  <Pressable
-    style={({ pressed }) => [
-      styles.trackerCard,
-      styles.citiesCard,
-      pressed && sharedStyles.pressed,
-    ]}
-    onPress={() => router.push('../subtabs/Cities')}
-  >
-    <Text style={[styles.cardValue, { color: '#1aa216' }]}>
-      {userProfile?.stats?.citiesVisited ?? 0}
-    </Text>
-    <Text style={styles.cardLabel}>Cities</Text>
-  </Pressable>
-</View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.trackerCard,
+              styles.visitedCard,
+              pressed && sharedStyles.pressed,
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: '/MapScreen',
+                params: { section: 'Visited' },
+              })
+            }
+          >
+            <Text style={[styles.cardValue, { color: '#0084C7' }]}>
+              {userProfile?.stats?.countriesVisited ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Countries</Text>
+          </Pressable>
 
-{/* Saved and Achievements Buttons */}
-<View style={styles.secondaryButtonsRow}>
-  <Pressable
-    style={({ pressed }) => [
-      styles.secondaryButton,
-      styles.savedButton,
-      pressed && sharedStyles.pressed,
-    ]}
-    onPress={() =>
-      router.push({
-        pathname: '/MapScreen',
-        params: { section: 'Saved' },
-      })
-    }
-  >
-    <Text style={styles.savedButtonText}>Saved</Text>
-  </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.trackerCard,
+              styles.citiesCard,
+              pressed && sharedStyles.pressed,
+            ]}
+            onPress={() => router.push('../subtabs/Cities')}
+          >
+            <Text style={[styles.cardValue, { color: '#1aa216' }]}>
+              {userProfile?.stats?.citiesVisited ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Cities</Text>
+          </Pressable>
+        </View>
 
-  <Pressable
-    style={({ pressed }) => [
-      styles.secondaryButton,
-      pressed && sharedStyles.pressed,
-    ]}
-    onPress={() => router.push('../profileSubtabs/achievements')}
-  >
-    <Text style={styles.secondaryButtonText}>Achievements</Text>
-  </Pressable>
-</View>
- 
+        {/* Saved and Achievements Buttons */}
+        <View style={styles.secondaryButtonsRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              styles.savedButton,
+              pressed && sharedStyles.pressed,
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: '/MapScreen',
+                params: { section: 'Saved' },
+              })
+            }
+          >
+            <Text style={styles.savedButtonText}>Saved</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && sharedStyles.pressed,
+            ]}
+            onPress={() => router.push('../profileSubtabs/achievements')}
+          >
+            <Text style={styles.secondaryButtonText}>Achievements</Text>
+          </Pressable>
+        </View>
+
         {/* Recent Activity */}
         <View style={styles.recentActivityContainer}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
-          
+
           {recentActivities.length > 0 ? (
-            recentActivities.map((activity) => (
-              <Pressable key={activity.id} style={styles.activityCard}>
-                <Image source={{ uri: activity.image }} style={styles.activityImage} />
-                <View style={styles.activityInfo}>
-                  <View style={styles.activityLocation}>
-                    <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
-                    <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
+            recentActivities.map((activity) => {
+              const act = activity as any;
+              return (
+                <Pressable
+                  key={activity.id}
+                  style={styles.activityCard}
+                  onPress={() => {
+                    if (act.type === 'trip' || act.tripId) {
+                      router.push({
+                        pathname: '../subtabs/[tripid]',
+                        params: { tripid: act.tripId || activity.id },
+                      });
+                    } else {
+                      router.push({
+                        pathname: '/(countries)/[id]',
+                        params: {
+                          id: act.countryCode || activity.id,
+                          code: act.countryCode || activity.id,
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <Image source={{ uri: activity.image }} style={styles.activityImage} />
+                  <View style={styles.activityInfo}>
+                    <View style={styles.activityLocation}>
+                      <Text style={styles.cityText} numberOfLines={1}>{activity.title}</Text>
+                      <Text style={styles.countryText} numberOfLines={1}>{activity.location}</Text>
+                    </View>
+                    <Text style={styles.dateText}>{activity.dateString}</Text>
                   </View>
-                  <Text style={styles.dateText}>{activity.dateString}</Text>
-                </View>
-              </Pressable>
-            ))
+                </Pressable>
+              );
+            })
           ) : (
             <View style={styles.emptyActivityContainer}>
               <Text style={styles.emptyActivityText}>No activity within the past 6 months</Text>
@@ -243,25 +265,25 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
- 
+
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { 
-    paddingVertical: 40, 
-    paddingHorizontal: 20, 
-    alignItems: 'center', 
-    backgroundColor: colors.appBackground 
+  container: {
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    backgroundColor: colors.appBackground
   },
-  avatarContainer: { 
-    width: 110, 
-    height: 110, 
-    borderRadius: 55, 
-    borderWidth: 3, 
-    borderColor: '#0084C7', 
-    padding: 3, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 12 
+  avatarContainer: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+    borderColor: '#0084C7',
+    padding: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12
   },
   avatar: { width: '100%', height: '100%', borderRadius: 50 },
   displayName: {
@@ -272,7 +294,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   username: { fontSize: 15, color: colors.placeholderGray, marginBottom: 10 },
-  
+
   hometownBadge: {
     backgroundColor: '#E0F2FE',
     paddingHorizontal: 16,
@@ -290,7 +312,7 @@ const styles = StyleSheet.create({
   statBox: { alignItems: 'center' },
   statNumber: { fontSize: 18, fontWeight: '700', color: colors.titleDark },
   statLabel: { fontSize: 14, color: colors.placeholderGray, marginTop: 2 },
-  
+
   actionButtonsRow: { flexDirection: 'row', width: '70%', gap: 12, marginBottom: 20, justifyContent: 'center' },
   actionButton: { flex: 1, paddingVertical: 8, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderColor: colors.borderLight, borderWidth: 1 },
   editButton: { backgroundColor: colors.white, borderColor: colors.borderLight },

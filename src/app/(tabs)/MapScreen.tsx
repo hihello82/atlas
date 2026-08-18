@@ -787,7 +787,10 @@ export default function MapScreen() {
                         style={styles.listItemRow}
                         onPress={() => {
                           if (item.isTrip) {
-                            router.push('../subtabs/Trips');
+                            router.push({
+                              pathname: '../subtabs/[tripid]',
+                              params: { tripId: item.code },
+                            });
                           }
                         }}
                       >
@@ -882,7 +885,12 @@ export default function MapScreen() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.listItemRow}
-                      onPress={() => router.push('../subtabs/Trips')}
+                      onPress={() =>
+                        router.push({
+                          pathname: '../subtabs/[tripid]',
+                          params: { tripid: item.id },
+                        })
+                      }
                     >
                       <View style={styles.listImageContainer}>
                         {item.coverPhoto ? (

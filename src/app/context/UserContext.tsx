@@ -62,6 +62,19 @@ export interface UserProfile {
   isGoogleSignIn?: boolean;
 }
 
+export interface TripCountryItem {
+  countryCode: string;
+  countryName?: string;
+  arrivalDate?: any;
+  departureDate?: any;
+  coverPhoto?: string;
+  description?: string;
+}
+
+export interface DetailedTripItem extends TripItem {
+  countryDetails?: TripCountryItem[];
+}
+
 type StatKey = keyof NonNullable<UserProfile['stats']>;
 
 export interface ActivityItem {
@@ -142,6 +155,7 @@ interface UserContextType {
   savedCountryCodes: Record<string, string>;
   livedCountryCodes: Record<string, string>;
   getLivedCountries: () => Promise<SavedCountryItem[]>;
+  getTripDetail: (tripId: string) => Promise<DetailedTripItem | null>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -200,6 +214,44 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   };
+
+  const getTripDetail = useCallback(async (tripId: string): Promise<DetailedTripItem | null> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !tripId) return null;
+
+    try {
+      const tripRef = doc(db, 'users', uid, 'trips', tripId);
+      const tripSnap = await getDoc(tripRef);
+
+      if (!tripSnap.exists()) return null;
+
+      const tripData = { id: tripSnap.id, ...tripSnap.data() } as TripItem;
+
+      const countriesSubcollRef = collection(db, 'users', uid, 'trips', tripId, 'countries');
+      const countriesSnap = await getDocs(countriesSubcollRef);
+
+      const countryDetails: TripCountryItem[] = [];
+      countriesSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        countryDetails.push({
+          countryCode: data.countryCode || docSnap.id,
+          countryName: data.countryName || '',
+          arrivalDate: data.arrivalDate || null,
+          departureDate: data.departureDate || null,
+          coverPhoto: data.coverPhoto || '',
+          description: data.description || '',
+        });
+      });
+
+      return {
+        ...tripData,
+        countryDetails,
+      };
+    } catch (err) {
+      console.error('Error fetching trip detail:', err);
+      return null;
+    }
+  }, []);
 
   const formatDateRange = (start: any, end: any) => {
     if (!start) return '';
@@ -295,7 +347,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-    const getSavedCountries = useCallback(async (): Promise<SavedCountryItem[]> => {
+  const getSavedCountries = useCallback(async (): Promise<SavedCountryItem[]> => {
     const uid = auth.currentUser?.uid;
     if (!uid) return [];
 
@@ -452,7 +504,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => {
+  const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
       setUserProfile(null);
@@ -779,7 +831,7 @@ const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => 
           item.name.startsWith('profilepicture')
         );
         await Promise.all(
-          existingProfilePics.map((fileRef) => deleteObject(fileRef).catch(() => {}))
+          existingProfilePics.map((fileRef) => deleteObject(fileRef).catch(() => { }))
         );
       } catch (err) {
         console.warn('UserContext: could not clear existing profile photos:', err);
@@ -842,6 +894,7 @@ const refreshUserProfile = useCallback(async (): Promise<UserProfile | null> => 
         savedCountryCodes,
         livedCountryCodes,
         getLivedCountries,
+        getTripDetail,
       }}
     >
       {children}
