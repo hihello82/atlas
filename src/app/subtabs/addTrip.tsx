@@ -215,17 +215,10 @@ export default function AddTrip() {
     }
     setTripNameError(false);
 
-    // Make sure something was actually selected for the current mode
-    if (dateMode === 'range' && !startDate) return;
-    if (dateMode === 'month' && (!selectedMonth || !selectedYear)) return;
-    if (dateMode === 'year' && !selectedSingleYear) return;
-
     setLoading(true);
 
-    // Overlap checking only applies to exact date ranges - a broad
-    // month/year selection has no concrete arrival/departure date to
-    // compare against existing visits.
-    if (dateMode === 'range') {
+    // Overlap checking only applies to exact date ranges when a startDate is selected
+    if (dateMode === 'range' && startDate) {
       const isOverlapping = await checkDateOverlap(code, startDate, endDate);
       if (isOverlapping) {
         setHasOverlapError(true);
@@ -243,12 +236,16 @@ export default function AddTrip() {
       await addTripVisit({
         code,
         name,
-        startDate: dateMode === 'range' ? startDate : undefined,
-        endDate: dateMode === 'range' ? endDate : undefined,
+        startDate: dateMode === 'range' && startDate ? startDate : undefined,
+        endDate: dateMode === 'range' && endDate ? endDate : undefined,
         dateMode,
-        selectedMonth: dateMode === 'month' ? selectedMonth : undefined,
+        selectedMonth: dateMode === 'month' && selectedMonth ? selectedMonth : undefined,
         selectedYear:
-          dateMode === 'month' ? selectedYear : dateMode === 'year' ? selectedSingleYear : undefined,
+          dateMode === 'month'
+            ? selectedMonth && selectedYear ? selectedYear : undefined
+            : dateMode === 'year'
+              ? selectedSingleYear || undefined
+              : undefined,
         tripName: selectedTripId === 'new' ? tripName : undefined,
         notes,
         selectedTripId,
