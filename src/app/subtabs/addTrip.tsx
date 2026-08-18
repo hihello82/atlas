@@ -6,15 +6,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -41,14 +41,19 @@ export default function AddTrip() {
   // Selected dates state
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  
+  const [dateMode, setDateMode] = useState<'range' | 'month' | 'year'>('range');
+  const [selectedMonth, setSelectedMonth] = useState<string>('01');
+  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const [selectedSingleYear, setSelectedSingleYear] = useState<string>('2026');
+
   // Date Picker Modal State
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempStartDate, setTempStartDate] = useState<string>('');
   const [tempEndDate, setTempEndDate] = useState<string>('');
 
   // Dropdown Modal State
-  const [selectedTripId, setSelectedTripId] = useState<string>('new');
+  const [selectedTripId, setSelectedTripId] = useState<string>('none');
+  const [tripNameError, setTripNameError] = useState(false);
   const [showTripPicker, setShowTripPicker] = useState(false);
 
   // Photo State
@@ -119,7 +124,7 @@ export default function AddTrip() {
   };
 
   // Upload Logic
-    const uploadPhotosToStorage = async (): Promise<{ url: string; caption: string }[]> => {
+  const uploadPhotosToStorage = async (): Promise<{ url: string; caption: string }[]> => {
     if (!user || photos.length === 0) return [];
 
     setIsUploading(true);
@@ -128,34 +133,34 @@ export default function AddTrip() {
     const totalCount = photos.length;
 
     try {
-        for (let i = 0; i < photos.length; i++) {
+      for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
         const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
         const fileName = `${safeName}_${Date.now()}_${i}.jpg`;
 
         const url = await uploadUserFile(
-            photo.uri,
-            fileName,
-            (currentFileProgress) => {
+          photo.uri,
+          fileName,
+          (currentFileProgress) => {
             const overallProgress = ((i * 100) + currentFileProgress) / totalCount;
             setUploadProgress(overallProgress);
-            }
+          }
         );
 
         uploadedResults.push({ url, caption: photo.caption });
-        }
+      }
 
-        setIsUploading(false);
-        return uploadedResults;
+      setIsUploading(false);
+      return uploadedResults;
     } catch (error) {
-        // Clean up successfully uploaded photos via context delete handler if operation fails
-        await Promise.all(
-        uploadedResults.map((item) => deleteUserFile(item.url).catch(() => {}))
-        );
-        setIsUploading(false);
-        throw error;
+      // Clean up successfully uploaded photos via context delete handler if operation fails
+      await Promise.all(
+        uploadedResults.map((item) => deleteUserFile(item.url).catch(() => { }))
+      );
+      setIsUploading(false);
+      throw error;
     }
-    };
+  };
 
   const handleDayPress = (day: { dateString: string }) => {
     const dateStr = day.dateString;
@@ -199,80 +204,104 @@ export default function AddTrip() {
     return marked;
   };
 
-    const handleSave = async () => {
-    if (!user || !code || !startDate) return;
+  // 2. Updated handleSave Validation
+  const handleSave = async () => {
+    if (!user || !code) return;
+
+    // Validate Trip Name if "Create New Trip" is selected
+    if (selectedTripId === 'new' && !tripName.trim()) {
+      setTripNameError(true);
+      return;
+    }
+    setTripNameError(false);
+
+    // Derive date representation based on selected mode
+    let finalStartDate = startDate;
+    let finalEndDate = endDate;
+
+    if (dateMode === 'month') {
+      finalStartDate = `${selectedYear}-${selectedMonth}`;
+      finalEndDate = '';
+    } else if (dateMode === 'year') {
+      finalStartDate = selectedSingleYear;
+      finalEndDate = '';
+    }
+
+    if (!finalStartDate) return;
 
     setLoading(true);
 
     // Check overlap via context handler
-    const isOverlapping = await checkDateOverlap(code, startDate, endDate);
+    const isOverlapping = await checkDateOverlap(code, finalStartDate, finalEndDate);
     if (isOverlapping) {
-        setHasOverlapError(true);
-        setLoading(false);
-        return;
+      setHasOverlapError(true);
+      setLoading(false);
+      return;
     }
 
     setHasOverlapError(false);
 
     let uploadedPhotosData: { url: string; caption: string }[] = [];
     try {
-        uploadedPhotosData = await uploadPhotosToStorage();
+      uploadedPhotosData = await uploadPhotosToStorage();
 
-        await addTripVisit({
+      await addTripVisit({
         code,
         name,
-        startDate,
-        endDate,
-        tripName,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        tripName: selectedTripId === 'new' ? tripName : '',
         notes,
         selectedTripId,
         uploadedPhotosData,
-        });
+      });
 
-        setLoading(false);
-        router.replace('/HomeScreen');
+      setLoading(false);
+      router.replace('/HomeScreen');
     } catch (err) {
-        console.error('Error saving trip:', err);
-        if (uploadedPhotosData.length > 0) {
+      console.error('Error saving trip:', err);
+      if (uploadedPhotosData.length > 0) {
         await Promise.all(
-            uploadedPhotosData.map((p) => deleteUserFile(p.url).catch(() => {}))
+          uploadedPhotosData.map((p) => deleteUserFile(p.url).catch(() => { }))
         );
-        }
-        setLoading(false);
-        setIsUploading(false);
+      }
+      setLoading(false);
+      setIsUploading(false);
     }
-    };
+  };
 
   const selectedTripLabel =
-    selectedTripId === 'new'
-      ? '-- Create New Trip --'
-      : existingTrips.find((t) => t.id === selectedTripId)?.title || '-- Select Trip --';
+    selectedTripId === 'none'
+      ? 'No Trip Selected'
+      : selectedTripId === 'new'
+        ? 'Create New Trip'
+        : existingTrips.find((t) => t.id === selectedTripId)?.title || '-- Select Trip --';
 
-    const renderPhotoItem = ({ item, drag, isActive }: any) => {
-        return (
-        <ScaleDecorator>
-            <TouchableOpacity
-            onLongPress={drag}
-            disabled={isActive}
-            style={[styles.photoWrapper, { opacity: isActive ? 0.7 : 1 }]}
-            >
-            <View style={styles.imageContainer}>
-                <Image source={{ uri: item.uri }} style={styles.photoThumbnail} />
-                <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(item.key)}>
-                <Ionicons name="close-circle" size={24} color="#ef4444" />
-                </TouchableOpacity>
-            </View>
-            <TextInput
-                style={styles.captionInput}
-                placeholder="Add caption..."
-                placeholderTextColor="#94a3b8"
-                value={item.caption}
-                onChangeText={(text) => handleCaptionChange(item.key, text)}
-            />
+  const renderPhotoItem = ({ item, drag, isActive }: any) => {
+    return (
+      <ScaleDecorator>
+        <TouchableOpacity
+          onLongPress={drag}
+          disabled={isActive}
+          style={[styles.photoWrapper, { opacity: isActive ? 0.7 : 1 }]}
+        >
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: item.uri }} style={styles.photoThumbnail} />
+            <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(item.key)}>
+              <Ionicons name="close-circle" size={24} color="#ef4444" />
             </TouchableOpacity>
-        </ScaleDecorator>
-        );
-    };
+          </View>
+          <TextInput
+            style={styles.captionInput}
+            placeholder="Add caption..."
+            placeholderTextColor="#94a3b8"
+            value={item.caption}
+            onChangeText={(text) => handleCaptionChange(item.key, text)}
+          />
+        </TouchableOpacity>
+      </ScaleDecorator>
+    );
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -289,7 +318,7 @@ export default function AddTrip() {
           {/* Add Photos Section */}
           <Text style={styles.label}>Trip Photos</Text>
           <Text style={styles.subText}>Drag and drop to reorder. The first photo will be used as the cover photo for the country.</Text>
-          
+
           <TouchableOpacity style={styles.photoAddButton} onPress={handleSelectPhotos} disabled={loading}>
             <Ionicons name="camera-outline" size={24} color="#007aff" />
             <Text style={styles.photoAddText}>Select Photos</Text>
@@ -309,61 +338,69 @@ export default function AddTrip() {
             </View>
           )}
 
-        {/* Dropdown Selector */}
-        <Text style={styles.label}>Add to Trip</Text>
-        <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
-        <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
-        <Ionicons name="chevron-down" size={20} color="#64748b" />
-        </TouchableOpacity>
+          {/* Dropdown Selector */}
+          <Text style={styles.label}>Add to Trip</Text>
+          <TouchableOpacity style={styles.dropdownSelector} onPress={() => setShowTripPicker(true)}>
+            <Text style={styles.dropdownText}>{selectedTripLabel}</Text>
+            <Ionicons name="chevron-down" size={20} color="#64748b" />
+          </TouchableOpacity>
 
-        {/* Hide 'New Trip Name' if existing trip selected */}
-        {selectedTripId === 'new' && (
-        <>
-            <Text style={styles.label}>New Trip Name</Text>
-            <TextInput
-            style={styles.input}
-            placeholder="Summer 2026 Backpacking"
-            value={tripName}
-            onChangeText={setTripName}
-            />
-        </>
-        )}
+          {/* Show 'New Trip Name' field only if 'Create New Trip' is selected */}
+          {selectedTripId === 'new' && (
+            <>
+              <Text style={styles.label}>New Trip Name</Text>
+              <TextInput
+                style={[styles.input, tripNameError && styles.inputError]}
+                placeholder="Summer 2026 Backpacking"
+                value={tripName}
+                onChangeText={(text) => {
+                  setTripName(text);
+                  if (text.trim()) setTripNameError(false);
+                }}
+              />
+              {tripNameError && (
+                <Text style={styles.errorText}>Trip name cannot be empty</Text>
+              )}
+            </>
+          )}
 
-        {/* Always show Visit Notes */}
-        <Text style={styles.label}>Visit Notes</Text>
-        <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Any memories or notes?"
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-        />
+          {/* Always show Visit Notes */}
+          <Text style={styles.label}>Visit Notes</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Any notes or memories?"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+          />
 
-        <Text style={styles.label}>Dates Visited</Text>
-        <TouchableOpacity
-        style={[styles.dateSelector, hasOverlapError && styles.dateSelectorError]}
-        onPress={() => {
-            setHasOverlapError(false);
-            setTempStartDate(startDate);
-            setTempEndDate(endDate);
-            setShowDatePicker(true);
-        }}
-        >
-        <Ionicons name="calendar-outline" size={20} color={hasOverlapError ? '#ef4444' : '#007aff'} />
-        <Text style={styles.dateSelectorText}>
-            {startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates'}
-        </Text>
-        </TouchableOpacity>
-
-        {/* Red overlap error message */}
-        {hasOverlapError && (
-        <Text style={sharedStyles.fieldErrorText}>
-            An existing visit already includes these dates.{' '}
-            <Text style={styles.errorTextBold} onPress={() => /*router.push(`/countries/${code}`)*/ console.log('transfer')}>
-            Edit visits here
+          <Text style={styles.label}>Dates Visited</Text>
+          <TouchableOpacity
+            style={[styles.dateSelector, hasOverlapError && styles.dateSelectorError]}
+            onPress={() => {
+              setHasOverlapError(false);
+              setTempStartDate(startDate);
+              setTempEndDate(endDate);
+              setShowDatePicker(true);
+            }}
+          >
+            <Ionicons name="calendar-outline" size={20} color={hasOverlapError ? '#ef4444' : '#007aff'} />
+            <Text style={styles.dateSelectorText}>
+              {dateMode === 'range' && (startDate ? `${startDate}${endDate ? ` to ${endDate}` : ''}` : 'Select dates')}
+              {dateMode === 'month' && `${selectedMonth}/${selectedYear}`}
+              {dateMode === 'year' && `${selectedSingleYear}`}
             </Text>
-        </Text>
-        )}
+          </TouchableOpacity>
+
+          {/* Red overlap error message */}
+          {hasOverlapError && (
+            <Text style={sharedStyles.fieldErrorText}>
+              An existing visit already includes these dates.{' '}
+              <Text style={styles.errorTextBold} onPress={() => /*router.push(`/countries/${code}`)*/ console.log('transfer')}>
+                Edit visits here
+              </Text>
+            </Text>
+          )}
 
           {/* Upload Progress Bar */}
           {isUploading && (
@@ -384,10 +421,19 @@ export default function AddTrip() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Modals for Trips and Date Pickers */}
         <Modal visible={showTripPicker} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTripPicker(false)}>
             <View style={styles.dropdownModalContent}>
+              <TouchableOpacity
+                style={styles.dropdownOption}
+                onPress={() => {
+                  setSelectedTripId('none');
+                  setTripNameError(false);
+                  setShowTripPicker(false);
+                }}
+              >
+                <Text style={styles.dropdownOptionText}>No Trip Selected</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.dropdownOption}
                 onPress={() => {
@@ -395,7 +441,7 @@ export default function AddTrip() {
                   setShowTripPicker(false);
                 }}
               >
-                <Text style={styles.dropdownOptionText}>-- Create New Trip --</Text>
+                <Text style={styles.dropdownOptionText}>Create New Trip</Text>
               </TouchableOpacity>
               {existingTrips.map((trip) => (
                 <TouchableOpacity
@@ -403,6 +449,7 @@ export default function AddTrip() {
                   style={styles.dropdownOption}
                   onPress={() => {
                     setSelectedTripId(trip.id);
+                    setTripNameError(false);
                     setShowTripPicker(false);
                   }}
                 >
@@ -416,24 +463,84 @@ export default function AddTrip() {
         <Modal visible={showDatePicker} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.calendarModalContent}>
-              <View style={styles.dateHeader}>
-                <View style={styles.dateHeaderBox}>
-                  <Text style={styles.dateHeaderLabel}>From</Text>
-                  <Text style={styles.dateHeaderValue}>{tempStartDate || 'Select'}</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.dateHeaderBox}>
-                  <Text style={styles.dateHeaderLabel}>To</Text>
-                  <Text style={styles.dateHeaderValue}>{tempEndDate || 'Select'}</Text>
-                </View>
+              {/* Date Granularity Selector */}
+              <View style={styles.granularityTabs}>
+                <TouchableOpacity
+                  style={[styles.tabButton, dateMode === 'range' && styles.activeTabButton]}
+                  onPress={() => setDateMode('range')}
+                >
+                  <Text style={[styles.tabText, dateMode === 'range' && styles.activeTabText]}>Date Range</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabButton, dateMode === 'month' && styles.activeTabButton]}
+                  onPress={() => setDateMode('month')}
+                >
+                  <Text style={[styles.tabText, dateMode === 'month' && styles.activeTabText]}>Month/Year</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabButton, dateMode === 'year' && styles.activeTabButton]}
+                  onPress={() => setDateMode('year')}
+                >
+                  <Text style={[styles.tabText, dateMode === 'year' && styles.activeTabText]}>Year Only</Text>
+                </TouchableOpacity>
               </View>
 
-              <Calendar
-                markingType={'period'}
-                markedDates={getMarkedDates()}
-                onDayPress={handleDayPress}
-                theme={{ todayTextColor: '#007aff', arrowColor: '#007aff' }}
-              />
+              {dateMode === 'range' && (
+                <>
+                  <View style={styles.dateHeader}>
+                    <View style={styles.dateHeaderBox}>
+                      <Text style={styles.dateHeaderLabel}>From</Text>
+                      <Text style={styles.dateHeaderValue}>{tempStartDate || 'Select'}</Text>
+                    </View>
+                    <View style={styles.divider} />
+                    <View style={styles.dateHeaderBox}>
+                      <Text style={styles.dateHeaderLabel}>To</Text>
+                      <Text style={styles.dateHeaderValue}>{tempEndDate || 'Select'}</Text>
+                    </View>
+                  </View>
+                  <Calendar
+                    markingType={'period'}
+                    markedDates={getMarkedDates()}
+                    onDayPress={handleDayPress}
+                    theme={{ todayTextColor: '#007aff', arrowColor: '#007aff' }}
+                  />
+                </>
+              )}
+
+              {dateMode === 'month' && (
+                <View style={styles.broadPickerContainer}>
+                  <TextInput
+                    style={styles.broadInput}
+                    placeholder="MM"
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    value={selectedMonth}
+                    onChangeText={setSelectedMonth}
+                  />
+                  <Text style={styles.broadSeparator}>/</Text>
+                  <TextInput
+                    style={styles.broadInput}
+                    placeholder="YYYY"
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={selectedYear}
+                    onChangeText={setSelectedYear}
+                  />
+                </View>
+              )}
+
+              {dateMode === 'year' && (
+                <View style={styles.broadPickerContainer}>
+                  <TextInput
+                    style={[styles.broadInput, { width: 120 }]}
+                    placeholder="YYYY"
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={selectedSingleYear}
+                    onChangeText={setSelectedSingleYear}
+                  />
+                </View>
+              )}
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowDatePicker(false)}>
@@ -442,8 +549,10 @@ export default function AddTrip() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.applyButton]}
                   onPress={() => {
-                    setStartDate(tempStartDate);
-                    setEndDate(tempEndDate);
+                    if (dateMode === 'range') {
+                      setStartDate(tempStartDate);
+                      setEndDate(tempEndDate);
+                    }
                     setShowDatePicker(false);
                   }}
                 >
@@ -459,6 +568,62 @@ export default function AddTrip() {
 }
 
 const styles = StyleSheet.create({
+  inputError: {
+    borderColor: '#ef4444',
+    borderWidth: 1.5,
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  granularityTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  activeTabButton: {
+    backgroundColor: '#fff',
+  },
+  tabText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#007aff',
+    fontWeight: 'bold',
+  },
+  broadPickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  broadInput: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 18,
+    textAlign: 'center',
+    width: 80,
+    backgroundColor: '#fff',
+  },
+  broadSeparator: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#64748b',
+  },
   container: { flex: 1, backgroundColor: colors.appBackground },
   content: { padding: 20 },
   header: { width: '100%', paddingHorizontal: 20, paddingTop: 8, alignItems: 'flex-start' },
@@ -502,10 +667,10 @@ const styles = StyleSheet.create({
   applyButton: { backgroundColor: '#007aff' },
   applyButtonText: { color: '#fff', fontWeight: 'bold' },
   dateSelectorError: {
-  borderColor: colors.errorRed,
-  borderWidth: 1.5,
-},
-errorTextBold: {
-  fontWeight: 'bold',
-},
+    borderColor: colors.errorRed,
+    borderWidth: 1.5,
+  },
+  errorTextBold: {
+    fontWeight: 'bold',
+  },
 });
